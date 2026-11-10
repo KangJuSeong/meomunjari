@@ -1,0 +1,86 @@
+{
+  "nickname": "주성",
+  "car": {
+    "model": "아이오닉 5",
+    "vehicleClass": "MID",
+    "powerType": "EV",
+    "batteryKWh": 77.4,
+    "efficiencyKmPerKWh": 5.0
+  },
+  "mySetting": {
+    "id": "p-my",
+    "ownerNickname": "주성",
+    "title": "내 기본 세팅",
+    "targetTempC": 20.0,
+    "hvacOn": true,
+    "seatMemorySlot": 1,
+    "backrestAngleDeg": 140,
+    "windowOpenPct": 0,
+    "ambientOn": true,
+    "ambientBrightness": 30
+  },
+  "visits": [
+    {
+      "id": "v-01",
+      "spotId": "s-001",
+      "date": "2026-04-18",
+      "month": 4
+    },
+    {
+      "id": "v-02",
+      "spotId": "s-002",
+      "date": "2026-07-11",
+      "month": 7
+    },
+    {
+      "id": "v-03",
+      "spotId": "s-005",
+      "date": "2026-08-02",
+      "month": 8
+    },
+    {
+      "id": "v-04",
+      "spotId": "s-007",
+      "date": "2026-09-06",
+      "month": 9
+    },
+    {
+      "id": "v-05",
+      "spotId": "s-009",
+      "date": "2026-10-03",
+      "month": 10
+    },
+    {
+      "id": "v-06",
+      "spotId": "s-001",
+      "date": "2026-10-11",
+      "month": 10
+    },
+    {
+      "id": "v-07",
+      "spotId": "s-008",
+      "date": "2026-05-23",
+      "month": 5
+    },
+    {
+      "id": "v-08",
+      "spotId": "s-006",
+      "date": "2026-06-14",
+      "month": 6
+    },
+    {
+      "id": "v-09",
+      "spotId": "s-004",
+      "date": "2026-09-27",
+      "month": 9
+    }
+  ],
+  "registeredSpotIds": [
+    "s-005"
+  ],
+  "reportCount": 8,
+  "reportCredits": 8,
+  "reviewCount": 6,
+  "presetLoadsReceived": 4,
+  "consentToRecord": false
+}

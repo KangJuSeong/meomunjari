@@ -1,0 +1,127 @@
+[
+  {
+    "id": "r-001",
+    "spotId": "s-003",
+    "author": "별헌터",
+    "authorGrade": "차박왕",
+    "rating": 5,
+    "text": "새벽 2시에 은하수가 머리 위로 지나가요. 공조 21도에 창문 살짝 열면 결로 없이 푹 잡니다.",
+    "createdAt": "2026-11-01",
+    "tags": [
+      "#별보기",
+      "#반려견동반"
+    ],
+    "reportId": "rp-003-01",
+    "presetId": "p-001"
+  },
+  {
+    "id": "r-002",
+    "spotId": "s-003",
+    "author": "달빛캠퍼",
+    "authorGrade": "차박 고수",
+    "rating": 5,
+    "text": "계곡 물소리 덕에 잠이 잘 와요. 자갈이라 차 수평 잡기 쉬워요.",
+    "createdAt": "2026-10-29",
+    "tags": [
+      "#평지주차"
+    ],
+    "presetId": "p-002"
+  },
+  {
+    "id": "r-003",
+    "spotId": "s-003",
+    "author": "초보차박러",
+    "authorGrade": "차박 새내기",
+    "rating": 4,
+    "text": "편의점이 멀어서 미리 장 봐 가세요. 화장실은 깨끗했어요.",
+    "createdAt": "2026-10-24",
+    "tags": [
+      "#화장실있음"
+    ]
+  },
+  {
+    "id": "r-004",
+    "spotId": "s-003",
+    "author": "몽이네",
+    "authorGrade": "차박러",
+    "rating": 5,
+    "text": "강아지랑 계곡 산책하기 최고. 밤에는 꽤 쌀쌀해요.",
+    "createdAt": "2026-10-18",
+    "tags": [
+      "#반려견동반",
+      "#단풍"
+    ]
+  },
+  {
+    "id": "r-005",
+    "spotId": "s-001",
+    "author": "파도타기",
+    "authorGrade": "차박 고수",
+    "rating": 5,
+    "text": "솔숲 사이로 보는 일출이 예술입니다.",
+    "createdAt": "2026-10-30",
+    "tags": [
+      "#일출맛집"
+    ]
+  },
+  {
+    "id": "r-006",
+    "spotId": "s-001",
+    "author": "주성",
+    "authorGrade": "차박러",
+    "rating": 4,
+    "text": "주말엔 자리가 금방 차요. 평일 추천.",
+    "createdAt": "2026-10-12",
+    "tags": [
+      "#솔캠"
+    ]
+  },
+  {
+    "id": "r-007",
+    "spotId": "s-002",
+    "author": "댕댕이아빠",
+    "authorGrade": "차박러",
+    "rating": 4,
+    "text": "파도 소리가 커서 귀마개 챙기세요.",
+    "createdAt": "2026-10-21",
+    "tags": [
+      "#바다뷰"
+    ]
+  },
+  {
+    "id": "r-008",
+    "spotId": "s-006",
+    "author": "북쪽하늘",
+    "authorGrade": "차박 고수",
+    "rating": 5,
+    "text": "사람이 거의 없어요. 별 보기엔 최고.",
+    "createdAt": "2026-10-25",
+    "tags": [
+      "#별보기"
+    ]
+  },
+  {
+    "id": "r-009",
+    "spotId": "s-008",
+    "author": "고원러",
+    "authorGrade": "차박왕",
+    "rating": 5,
+    "text": "바람이 세니 창문은 꼭 닫으세요.",
+    "createdAt": "2026-10-27",
+    "tags": [
+      "#별보기"
+    ]
+  },
+  {
+    "id": "r-010",
+    "spotId": "s-005",
+    "author": "아이둘맘",
+    "authorGrade": "차박러",
+    "rating": 4,
+    "text": "아이와 첫 차박으로 딱이에요. 편의점이 바로 앞.",
+    "createdAt": "2026-11-02",
+    "tags": [
+      "#아이와함께"
+    ]
+  }
+]

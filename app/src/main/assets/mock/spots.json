@@ -1,0 +1,489 @@
+[
+  {
+    "id": "s-001",
+    "name": "고성 송지호 솔숲",
+    "region": "강원도",
+    "lat": 38.333,
+    "lng": 128.516,
+    "radiusM": 300,
+    "description": "소나무 숲 사이 평평한 공터. 아침이면 송지호 너머로 해가 뜬다.",
+    "amenities": {
+      "toilet": true,
+      "convenienceStoreM": 900,
+      "ground": "마사토 평지",
+      "noise": "조용함",
+      "water": false
+    },
+    "tags": [
+      {
+        "tag": "#바다뷰",
+        "count": 21
+      },
+      {
+        "tag": "#일출맛집",
+        "count": 18
+      },
+      {
+        "tag": "#솔캠",
+        "count": 9
+      },
+      {
+        "tag": "#화장실있음",
+        "count": 12
+      },
+      {
+        "tag": "#평지주차",
+        "count": 7
+      }
+    ],
+    "rating": 4.6,
+    "ratingCount": 48,
+    "visitCount": 132,
+    "lastVisitedAt": "2026-11-01",
+    "createdAt": "2025-05-12",
+    "registeredBy": "별헌터",
+    "maxVehicleClass": "VAN",
+    "visitedVehicleClasses": {
+      "SMALL": 31,
+      "MID": 52,
+      "LARGE": 38,
+      "VAN": 11
+    },
+    "liveCampers": 3,
+    "typicalWeekendCampers": "보통 주말 밤 6~8대",
+    "nearestChargerKm": 6.5,
+    "photoColors": [
+      "#3B5B6E",
+      "#12202A"
+    ]
+  },
+  {
+    "id": "s-002",
+    "name": "양양 남애 해변 끝",
+    "region": "강원도",
+    "lat": 37.945,
+    "lng": 128.787,
+    "radiusM": 250,
+    "description": "방파제 옆 작은 공터. 파도 소리가 가깝고 일출이 정면이다.",
+    "amenities": {
+      "toilet": true,
+      "convenienceStoreM": 400,
+      "ground": "아스팔트",
+      "noise": "파도 소리",
+      "water": true
+    },
+    "tags": [
+      {
+        "tag": "#바다뷰",
+        "count": 26
+      },
+      {
+        "tag": "#일출맛집",
+        "count": 20
+      },
+      {
+        "tag": "#반려견동반",
+        "count": 8
+      },
+      {
+        "tag": "#편의점가까움",
+        "count": 6
+      }
+    ],
+    "rating": 4.4,
+    "ratingCount": 37,
+    "visitCount": 98,
+    "lastVisitedAt": "2026-10-30",
+    "createdAt": "2025-07-03",
+    "registeredBy": "파도타기",
+    "maxVehicleClass": "LARGE",
+    "visitedVehicleClasses": {
+      "COMPACT": 9,
+      "SMALL": 28,
+      "MID": 41,
+      "LARGE": 12
+    },
+    "liveCampers": 1,
+    "typicalWeekendCampers": "보통 주말 밤 4~5대",
+    "nearestChargerKm": 3.2,
+    "photoColors": [
+      "#4C7A8C",
+      "#14262E"
+    ]
+  },
+  {
+    "id": "s-003",
+    "name": "인제 방태산 계곡 쉼터",
+    "region": "강원도",
+    "lat": 37.896,
+    "lng": 128.348,
+    "radiusM": 300,
+    "description": "계곡 옆 넓은 자갈 공터. 빛 공해가 거의 없어 은하수가 보인다. 반려견과 산책하기 좋다.",
+    "amenities": {
+      "toilet": true,
+      "convenienceStoreM": 6200,
+      "ground": "자갈 평지",
+      "noise": "계곡 물소리",
+      "water": true
+    },
+    "tags": [
+      {
+        "tag": "#별보기",
+        "count": 34
+      },
+      {
+        "tag": "#산속",
+        "count": 22
+      },
+      {
+        "tag": "#반려견동반",
+        "count": 17
+      },
+      {
+        "tag": "#단풍",
+        "count": 15
+      },
+      {
+        "tag": "#평지주차",
+        "count": 11
+      },
+      {
+        "tag": "#화장실있음",
+        "count": 9
+      }
+    ],
+    "rating": 4.8,
+    "ratingCount": 61,
+    "visitCount": 176,
+    "lastVisitedAt": "2026-11-02",
+    "createdAt": "2025-04-20",
+    "registeredBy": "별헌터",
+    "maxVehicleClass": "LARGE",
+    "visitedVehicleClasses": {
+      "SMALL": 44,
+      "MID": 69,
+      "LARGE": 21
+    },
+    "liveCampers": 2,
+    "typicalWeekendCampers": "보통 주말 밤 4~5대",
+    "nearestChargerKm": 8.0,
+    "photoColors": [
+      "#1E2B4A",
+      "#070B16"
+    ]
+  },
+  {
+    "id": "s-004",
+    "name": "미시령 옛길 전망대",
+    "region": "강원도",
+    "lat": 38.219,
+    "lng": 128.43,
+    "radiusM": 200,
+    "description": "굽은 옛길 끝 작은 전망 공터. 진입로가 좁아 큰 차는 돌리기 어렵다.",
+    "amenities": {
+      "toilet": false,
+      "convenienceStoreM": null,
+      "ground": "비포장",
+      "noise": "바람 소리",
+      "water": false
+    },
+    "tags": [
+      {
+        "tag": "#별보기",
+        "count": 19
+      },
+      {
+        "tag": "#산속",
+        "count": 13
+      },
+      {
+        "tag": "#반려견동반",
+        "count": 5
+      },
+      {
+        "tag": "#겨울차박",
+        "count": 6
+      }
+    ],
+    "rating": 4.3,
+    "ratingCount": 22,
+    "visitCount": 54,
+    "lastVisitedAt": "2026-10-28",
+    "createdAt": "2025-09-14",
+    "registeredBy": "고갯길",
+    "maxVehicleClass": "SMALL",
+    "visitedVehicleClasses": {
+      "COMPACT": 18,
+      "SMALL": 30
+    },
+    "liveCampers": 0,
+    "typicalWeekendCampers": "보통 주말 밤 1~2대",
+    "nearestChargerKm": 11.0,
+    "photoColors": [
+      "#2B3550",
+      "#0C1020"
+    ]
+  },
+  {
+    "id": "s-005",
+    "name": "속초 영랑호 호숫가",
+    "region": "강원도",
+    "lat": 38.216,
+    "lng": 128.588,
+    "radiusM": 250,
+    "description": "호수 산책로 옆 주차 공간. 도심과 가까워 처음 차박하는 사람에게 좋다.",
+    "amenities": {
+      "toilet": true,
+      "convenienceStoreM": 200,
+      "ground": "아스팔트",
+      "noise": "약간 소음",
+      "water": true
+    },
+    "tags": [
+      {
+        "tag": "#호수",
+        "count": 16
+      },
+      {
+        "tag": "#아이와함께",
+        "count": 12
+      },
+      {
+        "tag": "#화장실있음",
+        "count": 14
+      },
+      {
+        "tag": "#편의점가까움",
+        "count": 13
+      },
+      {
+        "tag": "#평지주차",
+        "count": 10
+      }
+    ],
+    "rating": 4.1,
+    "ratingCount": 29,
+    "visitCount": 87,
+    "lastVisitedAt": "2026-11-02",
+    "createdAt": "2025-06-01",
+    "registeredBy": "주성",
+    "maxVehicleClass": "VAN",
+    "visitedVehicleClasses": {
+      "COMPACT": 14,
+      "SMALL": 22,
+      "MID": 30,
+      "VAN": 6
+    },
+    "liveCampers": 4,
+    "typicalWeekendCampers": "보통 주말 밤 7~9대",
+    "nearestChargerKm": 1.5,
+    "photoColors": [
+      "#3E6B5E",
+      "#122520"
+    ]
+  },
+  {
+    "id": "s-006",
+    "name": "양구 두타연 입구 쉼터",
+    "region": "강원도",
+    "lat": 38.254,
+    "lng": 128.015,
+    "radiusM": 300,
+    "description": "민통선 인근 조용한 쉼터. 밤하늘이 넓고 사람이 적다.",
+    "amenities": {
+      "toilet": true,
+      "convenienceStoreM": 9000,
+      "ground": "흙 평지",
+      "noise": "조용함",
+      "water": false
+    },
+    "tags": [
+      {
+        "tag": "#별보기",
+        "count": 12
+      },
+      {
+        "tag": "#반려견동반",
+        "count": 7
+      },
+      {
+        "tag": "#산속",
+        "count": 9
+      },
+      {
+        "tag": "#솔캠",
+        "count": 4
+      }
+    ],
+    "rating": 4.5,
+    "ratingCount": 14,
+    "visitCount": 31,
+    "lastVisitedAt": "2026-10-25",
+    "createdAt": "2026-03-08",
+    "registeredBy": "북쪽하늘",
+    "maxVehicleClass": "LARGE",
+    "visitedVehicleClasses": {
+      "SMALL": 10,
+      "MID": 14,
+      "LARGE": 4
+    },
+    "liveCampers": 0,
+    "typicalWeekendCampers": "보통 주말 밤 1~2대",
+    "nearestChargerKm": 14.0,
+    "photoColors": [
+      "#233148",
+      "#0A0F1A"
+    ]
+  },
+  {
+    "id": "s-007",
+    "name": "강릉 사천진 해변 공터",
+    "region": "강원도",
+    "lat": 37.843,
+    "lng": 128.875,
+    "radiusM": 250,
+    "description": "해변 북쪽 끝 공터. 반려견 동반 차박러가 많다.",
+    "amenities": {
+      "toilet": true,
+      "convenienceStoreM": 600,
+      "ground": "모래·자갈",
+      "noise": "파도 소리",
+      "water": true
+    },
+    "tags": [
+      {
+        "tag": "#바다뷰",
+        "count": 18
+      },
+      {
+        "tag": "#반려견동반",
+        "count": 15
+      },
+      {
+        "tag": "#일출맛집",
+        "count": 10
+      }
+    ],
+    "rating": 4.2,
+    "ratingCount": 25,
+    "visitCount": 71,
+    "lastVisitedAt": "2026-10-31",
+    "createdAt": "2025-08-19",
+    "registeredBy": "댕댕이아빠",
+    "maxVehicleClass": "LARGE",
+    "visitedVehicleClasses": {
+      "SMALL": 20,
+      "MID": 33,
+      "LARGE": 9
+    },
+    "liveCampers": 2,
+    "typicalWeekendCampers": "보통 주말 밤 5~6대",
+    "nearestChargerKm": 4.0,
+    "photoColors": [
+      "#55808F",
+      "#15252B"
+    ]
+  },
+  {
+    "id": "s-008",
+    "name": "평창 육백마지기",
+    "region": "강원도",
+    "lat": 37.623,
+    "lng": 128.549,
+    "radiusM": 400,
+    "description": "해발 1,200m 고원. 풍력발전기 아래로 별이 쏟아진다. 겨울엔 길이 얼 수 있다.",
+    "amenities": {
+      "toilet": true,
+      "convenienceStoreM": null,
+      "ground": "비포장 평지",
+      "noise": "바람 소리",
+      "water": false
+    },
+    "tags": [
+      {
+        "tag": "#별보기",
+        "count": 28
+      },
+      {
+        "tag": "#산속",
+        "count": 14
+      },
+      {
+        "tag": "#겨울차박",
+        "count": 9
+      },
+      {
+        "tag": "#단풍",
+        "count": 6
+      }
+    ],
+    "rating": 4.7,
+    "ratingCount": 52,
+    "visitCount": 148,
+    "lastVisitedAt": "2026-10-27",
+    "createdAt": "2025-03-30",
+    "registeredBy": "고원러",
+    "maxVehicleClass": "MID",
+    "visitedVehicleClasses": {
+      "COMPACT": 12,
+      "SMALL": 40,
+      "MID": 55
+    },
+    "liveCampers": 1,
+    "typicalWeekendCampers": "보통 주말 밤 8~10대",
+    "nearestChargerKm": 16.0,
+    "photoColors": [
+      "#2E3A5C",
+      "#0B0F1C"
+    ]
+  },
+  {
+    "id": "s-009",
+    "name": "고성 화진포 호숫가",
+    "region": "강원도",
+    "lat": 38.474,
+    "lng": 128.439,
+    "radiusM": 300,
+    "description": "호수와 바다 사이 솔밭. 혼자 조용히 머물기 좋다.",
+    "amenities": {
+      "toilet": true,
+      "convenienceStoreM": 1500,
+      "ground": "마사토",
+      "noise": "조용함",
+      "water": false
+    },
+    "tags": [
+      {
+        "tag": "#호수",
+        "count": 11
+      },
+      {
+        "tag": "#별보기",
+        "count": 9
+      },
+      {
+        "tag": "#솔캠",
+        "count": 8
+      }
+    ],
+    "rating": 4.4,
+    "ratingCount": 18,
+    "visitCount": 46,
+    "lastVisitedAt": "2026-10-20",
+    "createdAt": "2025-10-02",
+    "registeredBy": "솔캠러",
+    "maxVehicleClass": "VAN",
+    "visitedVehicleClasses": {
+      "SMALL": 15,
+      "MID": 20,
+      "VAN": 3
+    },
+    "liveCampers": 0,
+    "typicalWeekendCampers": "보통 주말 밤 2~3대",
+    "nearestChargerKm": 7.5,
+    "photoColors": [
+      "#3A5A4A",
+      "#101C17"
+    ]
+  }
+]
