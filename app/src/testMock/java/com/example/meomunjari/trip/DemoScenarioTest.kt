@@ -137,12 +137,12 @@ class DemoScenarioTest {
         world.setSpeed(60f)
         assertEquals(DriveState.DRIVING, DriveGuard.evaluate(world.snapshot.value))
 
-        // 5. 스팟 근처로 이동 + P단 → 3초 유지 후 도착 인증
+        // 5. 스팟 근처로 이동 + P단 → 5초 유지 후 도착 인증
         world.setLocation(Geo.offsetNorth(spot.location, 60.0))
         world.setGear(Gear.PARK)
         trip.evaluateArrival()
         assertNull(trip.certifiedVisit.value)
-        clock += 3_500
+        clock += 5_500
         trip.evaluateArrival()
         assertNotNull(trip.certifiedVisit.value)
         assertEquals(3, repos.spots.get("s-003")!!.liveCampers)
@@ -218,11 +218,11 @@ class DemoScenarioTest {
         assertTrue(repos.presets.forSpot("s-003").any { it.ownerNickname == "주성" })
 
         // 떠났다가 다시 오면 새 방문으로 인증된다.
-        world.setLocation(Geo.offsetNorth(spot.location, 1_000.0))
+        world.setLocation(Geo.offsetNorth(spot.location, 2_500.0))
         trip.evaluateArrival()
         world.setLocation(Geo.offsetNorth(spot.location, 60.0))
         trip.evaluateArrival()
-        clock += 3_500
+        clock += 5_500
         trip.evaluateArrival()
         assertNotNull("다시 찾아오면 인증돼야 한다", trip.certifiedVisit.value)
     }
@@ -299,7 +299,7 @@ class DemoScenarioTest {
         world.setLocation(spot.location)
         world.setGear(Gear.PARK)
         trip.evaluateArrival()
-        clock += 3_500
+        clock += 5_500
         trip.evaluateArrival()
         trip.setConsent(false)
         world.setBattery(62f)

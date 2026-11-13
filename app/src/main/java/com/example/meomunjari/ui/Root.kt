@@ -23,12 +23,12 @@ import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -104,13 +104,6 @@ fun MeomunjariRoot(container: AppContainer) {
             val onReview = nav.currentDestination?.route == Routes.REVIEW
             if (certified != null && trip.camping.value == null && !onReview) {
                 nav.navigate(Routes.ARRIVAL) { launchSingleTop = true }
-            }
-        }
-        // 주행 중 음성으로 고른 태그는 정차 후 검색 결과로 보여준다.
-        LaunchedEffect(driveState) {
-            if (driveState == DriveState.PARKED) {
-                val tags = trip.consumeVoiceTags()
-                if (tags.isNotEmpty()) nav.navigate(Routes.search(tags)) { launchSingleTop = true }
             }
         }
 

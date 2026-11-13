@@ -138,10 +138,6 @@ class TripStore(
     private val _finished = MutableStateFlow<FinishedCamping?>(null)
     val finished: StateFlow<FinishedCamping?> = _finished.asStateFlow()
 
-    /** 주행 중 음성 검색으로 받은 태그. 정차하면 검색 화면으로 넘긴다. */
-    private val _pendingVoiceTags = MutableStateFlow<List<String>>(emptyList())
-    val pendingVoiceTags: StateFlow<List<String>> = _pendingVoiceTags.asStateFlow()
-
     private val verifier = ArrivalVerifier()
     private val headingTracker = HeadingTracker()
 
@@ -551,18 +547,6 @@ class TripStore(
         loc ?: return null
         return repos.reference.zones.firstOrNull { Geo.distanceM(loc, LatLng(it.lat, it.lng)) <= it.radiusM }
             ?.let { "${it.name} — ${it.reason}" }
-    }
-
-    // ---------- 음성 ----------
-
-    fun queueVoiceTags(tags: List<String>) {
-        _pendingVoiceTags.value = tags
-    }
-
-    fun consumeVoiceTags(): List<String> {
-        val t = _pendingVoiceTags.value
-        _pendingVoiceTags.value = emptyList()
-        return t
     }
 
     // ---------- 공통 ----------
