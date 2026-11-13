@@ -45,7 +45,6 @@ interface VirtualConsole {
     fun setCabinTemp(celsius: Float)
     fun setOutsideTemp(celsius: Float)
     fun setWiper(active: Boolean)
-    fun setCharging(enabled: Boolean)
     fun setAutoDrive(enabled: Boolean)
     fun setCapability(item: ControlItem, supported: Boolean)
 }
