@@ -18,11 +18,11 @@ Android SDK 및 Google Maven·Pleos 저장소 접근이 필요합니다. 내비 
 
 ## 검증과 문서 버전
 
-`./gradlew :app:testMockDebugUnitTest :app:assembleMockDebug :app:assemblePleosDebug`로 단위 테스트와 두 APK를 검증합니다. 실제 차량의 경유지 수락 여부는 Pleos 환경에서 확인해야 합니다.
+`./gradlew :app:testMockDebugUnitTest :app:testPleosDebugUnitTest :app:assembleMockDebug :app:assemblePleosDebug`로 단위 테스트와 두 APK를 검증합니다. 실제 차량의 경유지 수락 여부는 Pleos 환경에서 확인해야 합니다.
 
 [기획 v1](docs/application-v1.md) · [기획 v2](docs/application-v2.md) · [문장별 변경표](docs/changes-v1-v2.md) · [에너지 계산과 시장 수치 근거](docs/energy-and-evidence-v2.md) · [기상 시각 v2.2](docs/wake-time-v2.2.md) · [충전 화면 v2.3](docs/charging-screen-v2.3.md) · [출발 전 경로 비교 v2.4](docs/departure-comparison-v2.4.md) · [시간대별 목업 편집 v2.5](docs/hourly-weather-v2.5.md)
 
-신청서 수정본은 [v3 기대효과](docs/application-v3.md), [v4 차량에서 해결할 문제](docs/application-v4.md), [v5 에너지 예측](docs/application-v5.md), [v6 차종별 공조 전력 계산 계획](docs/application-v6.md), [v7 일출 방향 안내와 아이오닉 5 예측](docs/application-v7.md) 순서로 확인할 수 있습니다. v2.5 목업의 [기상 시각 종료 리포트](docs/images/wake-v2.5-mock.png)는 8시간 체류 뒤 예측과 목업 차량 잔량을 비교한 화면입니다.
+신청서 수정본은 [v3 기대효과](docs/application-v3.md), [v4 차량에서 해결할 문제](docs/application-v4.md), [v5 에너지 예측](docs/application-v5.md), [v6 차종별 공조 전력 계산 계획](docs/application-v6.md), [v7 일출 방향 안내와 아이오닉 5 예측](docs/application-v7.md), [v8 신청서 반영 문구와 변경 내역](docs/application-v8.md) 순서로 확인할 수 있습니다. v2.5 목업의 [기상 시각 종료 리포트](docs/images/wake-v2.5-mock.png)는 8시간 체류 뒤 예측과 목업 차량 잔량을 비교한 화면입니다.
 
 ## 시연 시나리오 (mock 플레이버)
 
