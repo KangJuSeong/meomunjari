@@ -14,29 +14,24 @@ Android Studio 좌측 **Build Variants**에서 `mockDebug` / `pleosDebug`를 고
 
 ## 처음 빌드할 때 확인할 것
 
-이 코드는 Google Maven·Pleos 저장소에 접근할 수 없는 환경에서 작성했습니다. Android Studio에서 첫 빌드가 이 레포의 실제 검증입니다.
+Android SDK 및 Google Maven·Pleos 저장소 접근이 필요합니다. 내비 경유 요청은 NaviHelper 3.0.5의 타입과 이벤트를 사용합니다.
 
-1. **Kotlin 버전** — `gradle/libs.versions.toml`의 `kotlin = "2.3.0"`은 Compose·Serialization 컴파일러 플러그인 버전입니다. AGP 9.4가 다른 버전을 요구하면 이 값만 바꾸세요.
-2. **Compose BOM** — `composeBom = "2025.06.00"`. Studio가 더 새 버전을 제안하면 올려도 됩니다.
-3. **pleos 플레이버** — Door 외 도메인은 공개 문서에서 시그니처를 확인하지 못해 `PleosInvoker`가 메서드 이름으로 리플렉션 호출합니다(공식 샘플 `pleos-sample-vehicle-app`의 방식). 컴파일은 되지만, 실제 에뮬레이터에서 각 호출 결과는 Logcat `PleosVehicle`/`PleosInvoker` 태그로 확인하세요.
+## 검증과 문서 버전
 
-## 여기서 검증한 것
+`./gradlew :app:testMockDebugUnitTest :app:assembleMockDebug :app:assemblePleosDebug`로 단위 테스트와 두 APK를 검증합니다. 실제 차량의 경유지 수락 여부는 Pleos 환경에서 확인해야 합니다.
 
-- `core`·`domain`·`trip`·`data`·`sim` 패키지: Kotlin 컴파일러로 컴파일 완료
-- 단위 테스트 12개 통과 (`./gradlew testMockDebugUnitTest`)
-  - `DomainTest`: 태그 정규화, 차급 필터, 실측 리포트 문구, 에너지 예측(62% → 아침 48% 충분 / 25% → 15분 충전), 도착 인증, 뱃지·등급, 고수 세팅
-  - `DemoScenarioTest`: 시연 시나리오 4~8단계 전체 흐름 + 금지구역 등록 차단
-- `pleos` 게이트웨이: SDK 표면 스텁으로 컴파일, 리플렉션 호출기 런타임 동작 확인
-- UI(Compose) 코드는 이 환경에서 컴파일하지 못했습니다.
+[기획 v1](docs/application-v1.md) · [기획 v2](docs/application-v2.md) · [문장별 변경표](docs/changes-v1-v2.md) · [에너지 계산과 시장 수치 근거](docs/energy-and-evidence-v2.md) · [기상 시각 v2.2](docs/wake-time-v2.2.md) · [충전 화면 v2.3](docs/charging-screen-v2.3.md) · [출발 전 경로 비교 v2.4](docs/departure-comparison-v2.4.md) · [시간대별 목업 편집 v2.5](docs/hourly-weather-v2.5.md)
+
+신청서 수정본은 [v3 기대효과](docs/application-v3.md), [v4 차량에서 해결할 문제](docs/application-v4.md), [v5 에너지 예측](docs/application-v5.md), [v6 차종별 공조 전력 계산 계획](docs/application-v6.md), [v7 일출 방향 안내와 아이오닉 5 예측](docs/application-v7.md) 순서로 확인할 수 있습니다. v2.5 목업의 [기상 시각 종료 리포트](docs/images/wake-v2.5-mock.png)는 8시간 체류 뒤 예측과 목업 차량 잔량을 비교한 화면입니다.
 
 ## 시연 시나리오 (mock 플레이버)
 
 1. **테마 검색** → `#별보기`, `#반려견동반` → '내 차가 들어갈 수 있는 곳만' 켜짐 → 미시령 옛길(소형 SUV까지)이 빠짐
 2. **인제 방태산 계곡 쉼터** → 실측 리포트 "11월 기준 새벽 실내 최저 9°C · 공조 8시간 사용 시 배터리 14% 소모 · 기록 12회 중 비 온 날 3회", "지금 2대 차박 중"
-3. 가상 콘솔에서 배터리 62% → 아침 잔량 "충분해요" / 25% → "경로상 충전소에서 N분 충전"
-4. **여기로 갈래요** → 내비 목적지 설정
-5. 콘솔 **목적지까지 자동 주행** → 주행 중 화면 → 도착 후 기어 **P** → 3초 뒤 도착 인증
-6. **이 스팟 고수의 세팅**(별헌터) → 차박 모드 시작 → 공조·시트·창문·조명 적용 결과
+3. 속초에서 방태산을 선택하고 기상 시각을 설정 → 가상 콘솔 배터리 62%와 25%에서 직행·충전 경유 비교. 방태산의 목업 외기 0°C와 기본 공조 22°C에서 아이오닉 5의 시험 전력으로 기상 잔량을 계산
+4. **충전소를 경유해 차박지로** 또는 **여기로 바로 갈래요** → 차량 내비 경로 설정
+5. 콘솔 **목적지까지 자동 주행** → 경유 시 충전소에서 **모의 충전 시작** → **차박지로 출발** → 차박지 도착 후 기어 **P** → 3초 뒤 도착 인증
+6. 도착 카드 **해 뜨는 쪽으로 세워볼까요?** → 앞유리·트렁크·늦잠 선택 → 차 앞머리를 둘 방위 확인 → 돌아와 **이 스팟 고수의 세팅**(별헌터) → 차박 모드 시작 → 공조·시트·창문·조명 적용 결과
 7. 차박 중 화면에서 **시연 가속** 켜기 → 콘솔로 실내 온도·와이퍼 바꾸기 → **차박 종료**
 8. 실측 리포트 + 리뷰·`#일출맛집` 작성 → 탐험가·기록왕 진행도 +1, 테마 마스터(별 헌터) 획득
 

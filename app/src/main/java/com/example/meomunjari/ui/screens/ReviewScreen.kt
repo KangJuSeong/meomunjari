@@ -47,6 +47,9 @@ import com.example.meomunjari.ui.components.Toggle
 import com.example.meomunjari.ui.components.SecondaryButton
 import com.example.meomunjari.ui.theme.MColors
 
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
 private val QUICK_PHRASES = listOf("조용해요", "화장실 깨끗해요", "별이 잘 보여요", "바람이 강해요", "평지라 편해요", "밤에 쌀쌀해요")
 
 /** S7 실측 리포트 확인 + 인증 리뷰 작성 + 뱃지 진행도. */
@@ -73,7 +76,7 @@ fun ReviewScreen(onDone: () -> Unit) {
     val tagCandidates = (spotNow.sortedTags.map { it.tag } + c.tags.popular(spots)).distinct().take(12)
 
     Column {
-        ScreenHeader(title = "좋은 아침이에요 ☀️", subtitle = "${f.spot.name}에서 보낸 밤이 실측 리포트로 저장됐어요")
+        ScreenHeader(title = "좋은 아침이에요 ☀️", subtitle = "${f.spot.name}에서 차박을 마쳤어요")
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 SectionCard(title = "어젯밤 리포트") {
@@ -92,6 +95,26 @@ fun ReviewScreen(onDone: () -> Unit) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MColors.Teal,
                         )
+                    }
+                }
+                f.batteryComparison?.let { comparison ->
+                    SectionCard(title = "예상과 실제 배터리") {
+                        val forecast = comparison.predictedMorningPct?.roundToInt()
+                        val actual = comparison.endPct?.roundToInt()
+                        val minutes = comparison.stayMinutes
+                        val target = comparison.plannedWakeTime?.let { "$it 기상" } ?: "8시간 뒤"
+                        KeyValue("시작 때 예상한 ${target} 잔량", forecast?.let { "$it%" } ?: "예측 자료 부족")
+                        KeyValue("실제 종료 잔량", actual?.let { "$it%" } ?: "차량 잔량 확인 불가")
+                        KeyValue("실제 체류 시간", "${minutes / 60}시간 ${minutes % 60}분")
+                        if (forecast != null && actual != null) {
+                            val delta = actual - forecast
+                            Text(when {
+                                delta == 0 -> "종료 잔량이 예상과 같아요"
+                                delta > 0 -> "종료 잔량이 예상보다 ${abs(delta)}%p 높아요"
+                                else -> "종료 잔량이 예상보다 ${abs(delta)}%p 낮아요"
+                            })
+                            if (minutes != comparison.plannedMinutes.toLong()) Text("예정한 체류 시간과 실제 체류 시간이 달라요.")
+                        }
                     }
                 }
                 BadgeChanges(f.before, f.after)

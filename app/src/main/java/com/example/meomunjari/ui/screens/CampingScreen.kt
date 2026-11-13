@@ -32,6 +32,8 @@ import com.example.meomunjari.ui.components.EmptyState
 import com.example.meomunjari.ui.components.Pill
 import com.example.meomunjari.ui.components.PrimaryButton
 import com.example.meomunjari.ui.components.ScreenHeader
+import com.example.meomunjari.core.model.PowerType
+import com.example.meomunjari.domain.CampingEnergyPlanner
 import com.example.meomunjari.ui.components.SectionCard
 import com.example.meomunjari.ui.components.Sparkline
 import com.example.meomunjari.ui.components.StatTile
@@ -56,6 +58,7 @@ fun CampingScreen(onFinished: () -> Unit) {
         return
     }
 
+    val hvacKnown = vehicle.connected && vehicle.hvacPowerKnown
     Column {
         ScreenHeader(
             title = "편안한 밤 보내세요",
@@ -75,7 +78,11 @@ fun CampingScreen(onFinished: () -> Unit) {
                     )
                     StatTile(
                         "공조",
-                        if (vehicle.hvacOn) "${vehicle.hvacTargetC?.roundToInt() ?: "-"}°C" else "꺼짐",
+                        when {
+                            !hvacKnown -> "확인 중"
+                            vehicle.hvacOn -> vehicle.hvacTargetC?.let { "${it.roundToInt()}°C" } ?: "켜짐"
+                            else -> "꺼짐"
+                        },
                         Modifier.weight(1f),
                         icon = Icons.Filled.AcUnit,
                     )
@@ -121,8 +128,25 @@ fun CampingScreen(onFinished: () -> Unit) {
             }
 
             Column(Modifier.weight(0.8f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                if (user.car.powerType == PowerType.EV) {
+                    SectionCard(title = "아침 예상 잔량") {
+                        val night = if (hvacKnown) CampingEnergyPlanner.estimateNight(
+                            state.spot, state.startedAt, user.car, vehicle.hvacTargetC?.toDouble(), vehicle.hvacOn,
+                            elapsedHours = state.elapsedHours, stayMinutes = state.plannedMinutes,
+                        ) else null
+                        val pct = vehicle.batteryPct?.takeIf { vehicle.connected && it in 0f..100f }
+                        Text(when {
+                            state.elapsedSimMs >= state.plannedMinutes * 60_000L -> "예정한 기상 시간이 지났어요"
+                            !hvacKnown || pct == null -> "차량 배터리와 공조 상태를 확인하고 있어요"
+                            night == null -> "현재 조건의 야간 전력 자료가 부족해요"
+                            else -> "${Math.round((pct - night.drainPct).coerceAtLeast(0.0))}% · ${state.wakeAt?.let { "$it 기상 기준" } ?: "차박 시작 8시간 기준"}"
+                        })
+                        if (hvacKnown && state.elapsedSimMs < state.plannedMinutes * 60_000L)
+                            Text(energyBasisText(vehicle.hvacOn), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
                 SectionCard(title = "배터리 지킴이") {
-                    Text("잔량이 ${state.protectionThresholdPct}% 아래로 내려가면 공조를 끄고 알려요.", style = MaterialTheme.typography.bodyMedium)
+                    Text("잔량이 ${state.protectionThresholdPct}% 이하일 때 공조 끄기를 요청해요.", style = MaterialTheme.typography.bodyMedium)
                     Slider(
                         value = state.protectionThresholdPct.toFloat(),
                         onValueChange = { trip.setProtectionThreshold(it.roundToInt()) },
@@ -132,14 +156,14 @@ fun CampingScreen(onFinished: () -> Unit) {
                 }
                 SectionCard(title = "공조") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (vehicle.hvacOn) "켜짐" else "꺼짐", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Toggle(checked = vehicle.hvacOn, onCheckedChange = { on -> scope.launch { trip.setHvac(on) } })
+                        Text(when { !hvacKnown -> "상태 확인 중"; vehicle.hvacOn -> "켜짐"; else -> "꺼짐" }, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Toggle(checked = vehicle.hvacOn, enabled = hvacKnown, onCheckedChange = { on -> scope.launch { trip.setHvac(on) } })
                     }
                 }
                 SectionCard(title = "시연 가속") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("1초 = 10분", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Toggle(checked = scale >= 600, onCheckedChange = { trip.timeScale.value = if (it) 600 else 1 })
+                        Toggle(checked = scale >= 600, onCheckedChange = { trip.setTimeScale(if (it) 600 else 1) })
                     }
                     Text("밤새 기록을 몇 분 만에 보여주는 데모용 설정이에요.", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
                 }

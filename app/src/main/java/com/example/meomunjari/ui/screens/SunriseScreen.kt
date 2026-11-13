@@ -20,6 +20,11 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -48,30 +53,30 @@ import kotlin.math.sin
 @Composable
 fun SunriseScreen(onBack: () -> Unit) {
     val trip = LocalAppContainer.current.trip
-    // 아래 두 값이 바뀌면 다시 계산한다.
-    val heading by trip.heading.collectAsStateWithLifecycle()
-    val mode by trip.sunriseMode.collectAsStateWithLifecycle()
-    val advice = trip.parkingAdvice()
-
+    val guidance by trip.parkingAdvice.collectAsStateWithLifecycle()
+    val advice = guidance
     if (advice == null) {
-        EmptyState("스팟에 도착하면 알려드릴게요", "도착 인증이 되면 내일 일출 방향을 계산해요.")
+        Column {
+            ScreenHeader(title = "해 뜨는 방향 주차 안내", onBack = onBack)
+            EmptyState("지금은 주차 방향을 확인할 수 없어요", "스팟 반경 안에 주차하고 위치가 확인되면 다음 일출을 안내해요.")
+        }
         return
     }
-    val time = advice.sunrise.time?.let { "%02d:%02d".format(it.hour, it.minute) } ?: "-"
+    val heading = advice.currentHeadingDeg
+    val mode = advice.mode
 
     Column {
         ScreenHeader(
             title = "해 뜨는 쪽으로 세워볼까요?",
-            subtitle = "내일 아침 $time 일출 · 평지 지평선 기준",
+            subtitle = "${advice.sunrise.localDateTimeLabel} 일출 예정 · 평지 지평선 기준",
             onBack = onBack,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             SectionCard(modifier = Modifier.weight(1.05f)) {
-                Compass(advice, Modifier.fillMaxWidth().aspectRatio(1f))
+                Compass(advice, Modifier.weight(1f, fill = false).fillMaxWidth().aspectRatio(1f))
                 Text(
-                    "🌅 해 뜨는 방향   ━ 세울 방향   ■ 지금 차",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    "주황색 원은 일출, 파란 점선은 차 앞머리를 둘 방향이에요.",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MColors.Grey500,
                 )
             }
@@ -85,20 +90,25 @@ fun SunriseScreen(onBack: () -> Unit) {
                 }
                 SectionCard {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        StatTile("일출", time, Modifier.weight(1f))
                         StatTile(
                             "해 뜨는 방향",
                             "${ParkingAdvice.compass(advice.sunrise.azimuthDeg)} ${advice.sunrise.azimuthDeg.roundToInt()}°",
                             Modifier.weight(1f),
                             accent = MColors.Orange,
                         )
+                        StatTile(
+                            "권장 앞머리",
+                            "${ParkingAdvice.compass(advice.targetHeadingDeg)} ${advice.targetHeadingDeg.roundToInt()}°",
+                            Modifier.weight(1f),
+                            accent = MColors.Blue,
+                        )
                     }
                     val current = heading?.let { "차 앞머리 지금 ${ParkingAdvice.compass(it)} ${it.roundToInt()}°" }
-                        ?: "차 앞머리 방향을 아직 몰라요 (조금 움직이면 알 수 있어요)"
+                        ?: "아직 주차 직전의 차량 방향을 알 수 없어요"
                     Text(current, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MColors.Orange)
                     Callout(advice.instruction(), if (advice.aligned) MColors.Green else MColors.Orange)
                     Text(
-                        "15° 안으로 맞추면 '딱 맞게 세웠어요'로 바뀌어요 · 방향은 주차 직전 주행 궤적으로 계산해요",
+                        "주차 직전 30m 이상 이동한 궤적으로 앞머리를 추정해요. 권장 방향과 15° 이내면 정렬된 것으로 봐요.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MColors.Grey500,
                     )
@@ -107,11 +117,11 @@ fun SunriseScreen(onBack: () -> Unit) {
                     ListRow(
                         "⛰️",
                         "산이나 건물에 가리면 늦게 떠요",
-                        "실제로 해가 보인 시각을 남기면 다음 사람에게 도움이 돼요",
+                        "스팟의 지형과 주변 장애물에 따라 햇빛이 보이는 시각은 달라져요.",
                     )
                 }
                 SecondaryButton(
-                    "후진으로 들어와 주차했어요",
+                    if (advice.headingFlipped) "차량 방향 보정 취소" else "차량 방향을 180° 반대로 보정",
                     grey = true,
                     enabled = heading != null,
                     onClick = trip::flipHeading,
@@ -129,9 +139,12 @@ private fun Compass(advice: ParkingAdvice, modifier: Modifier = Modifier) {
     val target = advice.targetHeadingDeg.toFloat()
     val heading = advice.currentHeadingDeg?.toFloat()
 
-    Canvas(modifier) {
+    Canvas(modifier.semantics {
+        contentDescription = "진북 기준, 일출 ${sunAz.roundToInt()}도, 권장 앞머리 ${target.roundToInt()}도"
+    }) {
         val c = Offset(size.width / 2, size.height / 2)
-        val r = size.minDimension / 2 - 40f
+        val r = size.minDimension * 0.41f
+        if (r <= 0f) return@Canvas
         fun pt(deg: Float, radius: Float) = Offset(
             c.x + radius * sin(Math.toRadians(deg.toDouble())).toFloat(),
             c.y - radius * cos(Math.toRadians(deg.toDouble())).toFloat(),
@@ -152,29 +165,38 @@ private fun Compass(advice: ParkingAdvice, modifier: Modifier = Modifier) {
                 strokeWidth = if (i % 18 == 0) 4f else 2f,
             )
         }
-        // 북쪽 표시
-        drawCircle(MColors.Red, radius = 7f, center = pt(0f, r - 40f))
+        val labels = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+            textSize = (r * 0.09f).coerceAtMost(18.sp.toPx())
+            isFakeBoldText = true
+        }
+        drawIntoCanvas { canvas ->
+            listOf("북", "동", "남", "서").forEachIndexed { index, label ->
+                labels.color = if (index == 0) MColors.Red.toArgb() else MColors.Grey500.toArgb()
+                val point = pt(index * 90f, r * 0.82f)
+                canvas.nativeCanvas.drawText(label, point.x, point.y - (labels.ascent() + labels.descent()) / 2, labels)
+            }
+        }
 
         // 세울 방향
         drawLine(
             MColors.Blue,
             c,
-            pt(target, r - 50f),
+            pt(target, r * 0.73f),
             strokeWidth = 6f,
             cap = StrokeCap.Round,
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(18f, 14f)),
         )
         // 해
-        drawCircle(MColors.Orange50, radius = 34f, center = pt(sunAz, r + 4f))
-        drawCircle(MColors.Orange, radius = 18f, center = pt(sunAz, r + 4f))
+        drawCircle(MColors.Orange50, radius = r * 0.105f, center = pt(sunAz, r + 4f))
+        drawCircle(MColors.Orange, radius = r * 0.057f, center = pt(sunAz, r + 4f))
 
         // 지금 차 (위쪽이 앞머리)
-        val carDeg = heading ?: target
-        val carColor = if (heading == null) MColors.Grey400 else MColors.Text
-        rotate(carDeg, pivot = c) {
+        if (heading == null) return@Canvas
+        rotate(heading, pivot = c) {
             val w = r * 0.22f
             val h = r * 0.48f
-            drawRoundRect(carColor, topLeft = Offset(c.x - w / 2, c.y - h / 2), size = Size(w, h), cornerRadius = CornerRadius(w * 0.38f))
+            drawRoundRect(MColors.Text, topLeft = Offset(c.x - w / 2, c.y - h / 2), size = Size(w, h), cornerRadius = CornerRadius(w * 0.38f))
             drawRoundRect(
                 MColors.Grey500,
                 topLeft = Offset(c.x - w * 0.38f, c.y - h * 0.38f),
@@ -187,15 +209,15 @@ private fun Compass(advice: ParkingAdvice, modifier: Modifier = Modifier) {
 
         // 돌려야 할 호
         val turn = advice.turnDeg
-        if (heading != null && turn != null && !advice.aligned) {
+        if (turn != null && !advice.aligned) {
             val start = heading - 90f
             drawArc(
                 MColors.Orange,
                 startAngle = start,
                 sweepAngle = turn.toFloat(),
                 useCenter = false,
-                topLeft = Offset(c.x - (r - 80f), c.y - (r - 80f)),
-                size = Size((r - 80f) * 2, (r - 80f) * 2),
+                topLeft = Offset(c.x - (r * 0.62f), c.y - (r * 0.62f)),
+                size = Size((r * 0.62f) * 2, (r * 0.62f) * 2),
                 style = Stroke(width = 8f, cap = StrokeCap.Round),
             )
         }

@@ -79,7 +79,7 @@ class PleosVehicleGateway(
         car.connect()
         pollJob = scope.launch {
             while (isActive) {
-                _snapshot.update { it.copy(gear = car.gear(), speedKmh = car.speedKmh()) }
+                _snapshot.update { it.copy(gear = car.gear(), speedKmh = car.speedKmh(), chargeState = car.chargeState()) }
                 delay(1_000)
             }
         }
@@ -88,6 +88,7 @@ class PleosVehicleGateway(
     override fun stop() {
         pollJob?.cancel()
         pollJob = null
+        _snapshot.value = VehicleSnapshot()
         car.release()
         if (initialized) {
             runCatching { vehicle.release() }
@@ -117,7 +118,7 @@ class PleosVehicleGateway(
             PleosInvoker.number(v)?.let { t -> _snapshot.update { it.copy(hvacTargetC = t) } }
         }
         read(HVAC::class, hvac, "getHvacPowerState", "registerHvacPowerState") { v ->
-            PleosInvoker.flag(v)?.let { on -> _snapshot.update { it.copy(hvacOn = on) } }
+            PleosInvoker.flag(v)?.let { on -> _snapshot.update { it.copy(hvacOn = on, hvacPowerKnown = true) } }
         }
         // 와이퍼(비 여부)
         read(Wiper::class, wiper, "getCurrentWiperState", "registerWiperState") { v ->

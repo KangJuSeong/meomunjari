@@ -1,13 +1,15 @@
 package com.example.meomunjari.domain.camping
 
+import com.example.meomunjari.core.model.BatteryComparison
 import com.example.meomunjari.core.model.CarProfile
 import com.example.meomunjari.core.model.MeasurementReport
 import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.model.Spot
 import com.example.meomunjari.core.model.Visit
 import com.example.meomunjari.core.vehicle.ApplyItemResult
+import com.example.meomunjari.domain.WakeSchedule
+import java.time.LocalTime
 import com.example.meomunjari.domain.MemberStatus
-import kotlin.math.max
 
 /** 차박 중 기록하는 샘플 1개. simTimeMs = 차박 시작 후 경과(시연 가속 반영). */
 data class CampingSample(
@@ -20,6 +22,7 @@ data class CampingSample(
 
 data class CampingState(
     val spot: Spot,
+    val startedAt: LocalTime,
     val visit: Visit?,
     val preset: SettingPreset,
     val applyResults: List<ApplyItemResult>,
@@ -29,6 +32,9 @@ data class CampingState(
     val protectionThresholdPct: Int = 20,
     val protectionTriggered: Boolean = false,
     val notice: String? = null,
+    val initialMorningPct: Double? = null,
+    val plannedMinutes: Int = WakeSchedule.DEFAULT_MINUTES,
+    val wakeAt: LocalTime? = null,
 ) {
     val elapsedHours: Double get() = elapsedSimMs / 3_600_000.0
 }
@@ -41,6 +47,7 @@ data class FinishedCamping(
     val before: MemberStatus,
     val after: MemberStatus,
     val reviewSubmitted: Boolean = false,
+    val batteryComparison: BatteryComparison? = null,
 )
 
 object CampingRecorder {
@@ -64,11 +71,16 @@ object CampingRecorder {
         val durationH = (last.simTimeMs - first.simTimeMs) / 3_600_000.0
         if (durationH <= 0) return null
 
-        val energyFirst = samples.firstNotNullOfOrNull { it.energyPct }
-        val energyLast = samples.lastOrNull { it.energyPct != null }?.energyPct
-        val used = if (energyFirst != null && energyLast != null) max(0f, energyFirst - energyLast).toDouble() else 0.0
-        val hvacSamples = samples.drop(1).count { it.hvacOn }
-        val hvacHours = hvacSamples * SAMPLE_INTERVAL_SIM_MS / 3_600_000.0
+        val energyFirst = first.energyPct
+        val energyLast = last.energyPct
+        val valid = energyFirst != null && energyLast != null && energyFirst in 0f..100f &&
+            energyLast in 0f..energyFirst && samples.zipWithNext().none { (a, b) ->
+                a.energyPct != null && b.energyPct != null && b.energyPct > a.energyPct
+            }
+        val used = if (valid) (energyFirst!! - energyLast!!).toDouble() else 0.0
+        val hvacHours = samples.zipWithNext().sumOf { (a, b) ->
+            if (b.hvacOn) (b.simTimeMs - a.simTimeMs) / 3_600_000.0 else 0.0
+        }
 
         return MeasurementReport(
             id = id,
@@ -79,6 +91,7 @@ object CampingRecorder {
             minCabinTempC = temps.min().round1(),
             avgCabinTempC = temps.average().round1(),
             hvacHours = hvacHours.round1(),
+            hasEnergyReading = valid,
             energyUsedPct = used.round1(),
             durationHours = durationH.round1(),
             rained = samples.any { it.wiperActive },

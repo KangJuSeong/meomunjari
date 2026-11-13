@@ -3,6 +3,8 @@ package com.example.meomunjari.core.vehicle
 import com.example.meomunjari.core.model.SettingPreset
 import kotlinx.coroutines.flow.StateFlow
 
+enum class ChargeState { UNKNOWN, IDLE, CHARGING, FULL, ERROR }
+
 enum class Gear(val label: String) {
     PARK("P"),
     REVERSE("R"),
@@ -28,6 +30,8 @@ data class VehicleSnapshot(
     val ambientBrightness: Int = 0,
     val doorOpen: Boolean = false,
     val seatMemorySlot: Int? = null,
+    val hvacPowerKnown: Boolean = false,
+    val chargeState: ChargeState = ChargeState.UNKNOWN,
 ) {
     /** EV면 배터리 %, 내연기관이면 연료 %. */
     val energyPct: Float? get() = batteryPct ?: fuelPct

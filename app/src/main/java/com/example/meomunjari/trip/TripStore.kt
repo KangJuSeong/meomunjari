@@ -2,15 +2,20 @@ package com.example.meomunjari.trip
 
 import com.example.meomunjari.core.Geo
 import com.example.meomunjari.core.Gateways
+import com.example.meomunjari.core.model.BatteryComparison
 import com.example.meomunjari.core.model.Amenities
 import com.example.meomunjari.core.model.LatLng
+import com.example.meomunjari.core.model.PowerType
 import com.example.meomunjari.core.model.Review
 import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.model.Spot
 import com.example.meomunjari.core.model.TagCount
 import com.example.meomunjari.core.model.VehicleClass
 import com.example.meomunjari.core.model.Visit
+import com.example.meomunjari.core.navi.ChargingStop
+import com.example.meomunjari.domain.CampingEnergyPlanner
 import com.example.meomunjari.core.navi.NaviDestination
+import com.example.meomunjari.core.vehicle.Gear
 import com.example.meomunjari.core.vehicle.ApplyItemResult
 import com.example.meomunjari.core.vehicle.VehicleSnapshot
 import com.example.meomunjari.data.Repositories
@@ -22,6 +27,7 @@ import com.example.meomunjari.domain.DriveState
 import com.example.meomunjari.domain.HeadingTracker
 import com.example.meomunjari.domain.ParkingAdvice
 import com.example.meomunjari.domain.ParkingAdvisor
+import com.example.meomunjari.domain.SunCalculator
 import com.example.meomunjari.domain.SunriseMode
 import com.example.meomunjari.domain.MemberStatus
 import com.example.meomunjari.domain.ReportAggregator
@@ -39,20 +45,24 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.example.meomunjari.domain.WakeSchedule
+import java.time.Instant
+import java.time.ZoneId
+import java.time.LocalTime
 import java.time.LocalDate
 
 data class RouteProgress(val remainingKm: Double, val remainingMin: Int) {
     companion object {
-        private const val AVG_KMH = 45.0
-
         fun estimate(from: LatLng, to: Spot): RouteProgress {
             val km = Geo.distanceM(from, to.location) / 1000.0 * Geo.ROAD_FACTOR
-            return RouteProgress(km, (km / AVG_KMH * 60).toInt())
+            return RouteProgress(km, CampingEnergyPlanner.drivingMinutes(km))
         }
     }
 }
@@ -83,6 +93,7 @@ class TripStore(
     val timeScale: MutableStateFlow<Int>,
     private val nowMs: () -> Long = System::currentTimeMillis,
     private val today: () -> LocalDate = LocalDate::now,
+    private val elapsedMs: () -> Long = { System.nanoTime() / 1_000_000L },
 ) {
     val vehicle: StateFlow<VehicleSnapshot> get() = gateways.vehicle.snapshot
     val location: StateFlow<LatLng?> get() = gateways.location.location
@@ -94,8 +105,18 @@ class TripStore(
     private val _destination = MutableStateFlow<Spot?>(null)
     val destination: StateFlow<Spot?> = _destination.asStateFlow()
 
-    val route: StateFlow<RouteProgress?> = combine(_destination, gateways.location.location) { spot, loc ->
-        if (spot == null || loc == null) null else RouteProgress.estimate(loc, spot)
+    val arrivedStop = gateways.navi.arrivedStop
+    fun leaveChargingStop() = gateways.navi.leaveChargingStop()
+
+    val chargingStop = gateways.navi.chargingStop
+    val route: StateFlow<RouteProgress?> = combine(_destination, gateways.location.location, chargingStop) { spot, loc, via ->
+        if (spot == null || loc == null) null
+        else if (via == null) RouteProgress.estimate(loc, spot)
+        else {
+            val km = CampingEnergyPlanner.roadKm(loc, via.station.location) +
+                CampingEnergyPlanner.roadKm(via.station.location, spot.location)
+            RouteProgress(km, CampingEnergyPlanner.drivingMinutes(km) + via.minutes)
+        }
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
     private val _arrival = MutableStateFlow<ArrivalStatus?>(null)
@@ -103,6 +124,13 @@ class TripStore(
 
     private val _certifiedVisit = MutableStateFlow<Visit?>(null)
     val certifiedVisit: StateFlow<Visit?> = _certifiedVisit.asStateFlow()
+
+    private val _wakeTime = MutableStateFlow<LocalTime?>(null)
+    val wakeTime = _wakeTime.asStateFlow()
+
+    fun selectWakeTime(time: LocalTime?) {
+        _wakeTime.value = time?.withSecond(0)?.withNano(0)
+    }
 
     private val _camping = MutableStateFlow<CampingState?>(null)
     val camping: StateFlow<CampingState?> = _camping.asStateFlow()
@@ -117,12 +145,9 @@ class TripStore(
     private val verifier = ArrivalVerifier()
     private val headingTracker = HeadingTracker()
 
-    /** 차 앞머리 방향(주차 직전 주행 궤적으로 추정). 모르면 null. */
-    private val _heading = MutableStateFlow<Double?>(null)
-    val heading: StateFlow<Double?> = _heading.asStateFlow()
-
-    private val _sunriseMode = MutableStateFlow(SunriseMode.WINDSHIELD)
-    val sunriseMode: StateFlow<SunriseMode> = _sunriseMode.asStateFlow()
+    private var sunriseMode = SunriseMode.WINDSHIELD
+    private val _parkingAdvice = MutableStateFlow<ParkingAdvice?>(null)
+    val parkingAdvice = _parkingAdvice.asStateFlow()
 
     /**
      * 차박을 마친 스팟. 차가 반경 밖으로 떠나기 전까지는 같은 자리에 서 있어도 다시 인증하지 않는다.
@@ -132,6 +157,20 @@ class TripStore(
 
     /** 이번 방문 직전의 회원 상태. 차박 후 '이번에 오른 진행도'를 보여줄 기준. */
     private var statusBeforeVisit: MemberStatus? = null
+    private var clockAnchorMs = 0L
+    private var elapsedAtAnchorMs = 0L
+
+    private fun campingElapsedMs(): Long =
+        elapsedAtAnchorMs + (elapsedMs() - clockAnchorMs).coerceAtLeast(0) * timeScale.value.coerceAtLeast(1)
+
+    fun setTimeScale(scale: Int) {
+        if (_camping.value != null) {
+            elapsedAtAnchorMs = campingElapsedMs()
+            clockAnchorMs = elapsedMs()
+        }
+        timeScale.value = scale.coerceAtLeast(1)
+    }
+
     private var loops: List<Job> = emptyList()
 
     fun start() {
@@ -139,6 +178,11 @@ class TripStore(
         loops = listOf(
             scope.launch { while (isActive) { evaluateArrival(); delay(500) } },
             scope.launch { campingLoop() },
+            scope.launch {
+                gateways.navi.destination.collect { active ->
+                    if (active == null && gateways.navi.destination.value == null) _destination.value = null
+                }
+            },
         )
     }
 
@@ -149,9 +193,9 @@ class TripStore(
 
     // ---------- 목적지 ----------
 
-    suspend fun navigateTo(spot: Spot): Boolean {
+    suspend fun navigateTo(spot: Spot, via: ChargingStop? = null): Boolean {
         val ok = gateways.navi.requestRoute(
-            NaviDestination(spot.id, spot.name, spot.location, spot.region),
+            NaviDestination(spot.id, spot.name, spot.location, spot.region), via,
         )
         if (ok) _destination.value = spot
         return ok
@@ -170,9 +214,24 @@ class TripStore(
         val spots = repos.spots.spots.value
         val certified = _certifiedVisit.value
 
-        if (loc != null) {
-            headingTracker.onLocation(loc, moving = DriveGuard.evaluate(snap) == DriveState.DRIVING)
-            _heading.value = headingTracker.headingDeg
+        if (loc == null || !snap.connected || snap.gear == Gear.UNKNOWN || snap.gear == Gear.NEUTRAL) {
+            headingTracker.reset()
+        } else {
+            headingTracker.onLocation(
+                loc, moving = snap.gear == Gear.DRIVE || snap.gear == Gear.REVERSE,
+                reversing = snap.gear == Gear.REVERSE,
+            )
+        }
+
+        arrivedStop.value?.let { stop ->
+            // 순정 내비가 경유를 마친 뒤 운전자가 직접 출발한 경우도 처리한다.
+            if (loc != null && Geo.distanceM(loc, stop.station.location) > 300 &&
+                DriveGuard.evaluate(snap) == DriveState.DRIVING) {
+                leaveChargingStop()
+            } else {
+                _parkingAdvice.value = null
+                return
+            }
         }
 
         // 인증 후 멀리 떠나면(차박 중 아님) 인증을 해제한다.
@@ -197,6 +256,7 @@ class TripStore(
         val status = verifier.evaluate(target, loc, snap, nowMs(), already)
         _arrival.value = status
         if (status.justCertified && target != null) certify(target)
+        refreshParkingAdvice()
     }
 
     private fun certify(spot: Spot) {
@@ -223,21 +283,29 @@ class TripStore(
     // ---------- 주차 방향(일출) ----------
 
     fun setSunriseMode(mode: SunriseMode) {
-        _sunriseMode.value = mode
+        sunriseMode = mode
+        refreshParkingAdvice()
     }
 
-    /** 후진으로 들어와 주차했어요. */
     fun flipHeading() {
+        if (_parkingAdvice.value?.currentHeadingDeg == null) return
         headingTracker.flip()
-        _heading.value = headingTracker.headingDeg
+        refreshParkingAdvice()
     }
 
-    /** 지금 있는(또는 인증된) 스팟 기준 내일 아침 일출 주차 안내. */
-    fun parkingAdvice(): ParkingAdvice? {
-        val spot = _certifiedVisit.value?.let { repos.spots.get(it.spotId) } ?: _arrival.value?.spot ?: return null
-        val now = today()
-        // 해가 지기 전이라도 '내일 아침'을 기준으로 안내한다.
-        return ParkingAdvisor.advise(spot.location, now.plusDays(1), _sunriseMode.value, _heading.value)
+    private fun refreshParkingAdvice() {
+        val status = _arrival.value
+        val spot = status?.spot
+        if (spot == null || !status.withinRadius || !status.parked || arrivedStop.value != null) {
+            _parkingAdvice.value = null
+            return
+        }
+        val sun = SunCalculator.nextSunrise(spot.location, Instant.ofEpochMilli(nowMs()))
+        // 가상 콘솔에서 좌표만 옮기거나 위치가 크게 튀면 이전 장소의 방위를 쓰지 않는다.
+        val heading = headingTracker.headingDeg.takeIf {
+            headingTracker.measuredAt?.let { Geo.distanceM(it, spot.location) <= spot.radiusM + 30.0 } == true
+        }
+        _parkingAdvice.value = sun?.let { ParkingAdvisor.advise(it, sunriseMode, heading, headingTracker.flipped) }
     }
 
     // ---------- 차박 모드 ----------
@@ -246,21 +314,40 @@ class TripStore(
 
     suspend fun startCamping(preset: SettingPreset, includeDoor: Boolean, loadedPresetId: String? = null): StartCampingResult {
         if (!DriveGuard.canControl(vehicle.value)) return StartCampingResult.NotParked
-        val visit = _certifiedVisit.value
-        val spot = visit?.let { repos.spots.get(it.spotId) } ?: return StartCampingResult.NoSpot
+        val visit = _certifiedVisit.value ?: return StartCampingResult.NoSpot
+        val spot = repos.spots.get(visit.spotId) ?: return StartCampingResult.NoSpot
 
         val results: List<ApplyItemResult> = gateways.vehicle.apply(preset, includeDoor)
         loadedPresetId?.let { repos.presets.recordLoad(it) }
 
         val user = repos.user.user.value
+        val snapshot = vehicle.value
+        val wakeAt = wakeTime.value
+        val startTime = Instant.ofEpochMilli(nowMs()).atZone(ZoneId.systemDefault()).toLocalTime()
+        val plannedMinutes = WakeSchedule.stayMinutes(startTime, wakeAt)
+        val initialMorningPct = if (user.car.powerType == PowerType.EV && snapshot.connected && snapshot.hvacPowerKnown) {
+            val night = CampingEnergyPlanner.estimateNight(
+                spot, startTime, user.car, snapshot.hvacTargetC?.toDouble(), snapshot.hvacOn, stayMinutes = plannedMinutes,
+            )
+            val battery = snapshot.batteryPct
+            if (battery != null && battery in 0f..100f && night != null) (battery - night.drainPct).coerceAtLeast(0.0)
+            else null
+        } else null
+        clockAnchorMs = elapsedMs()
+        elapsedAtAnchorMs = 0
         val state = CampingState(
             spot = spot,
             visit = visit,
             preset = preset,
             applyResults = results,
             recording = user.consentToRecord,
+            samples = listOf(sample(0L)),
+            initialMorningPct = initialMorningPct,
+            plannedMinutes = plannedMinutes,
+            wakeAt = wakeAt,
+            startedAt = startTime,
         )
-        _camping.value = state.copy(samples = listOf(sample(0L)))
+        _camping.value = state
         _finished.value = null
         return StartCampingResult.Started(state)
     }
@@ -271,28 +358,37 @@ class TripStore(
 
     private suspend fun campingLoop() {
         while (scope.isActive) {
-            val scale = timeScale.value.coerceAtLeast(1)
-            val waitMs = (CampingRecorder.SAMPLE_INTERVAL_SIM_MS / scale).coerceIn(250L, CampingRecorder.SAMPLE_INTERVAL_SIM_MS)
-            delay(if (_camping.value == null) 500L else waitMs)
+            delay(500L)
             val current = _camping.value ?: continue
-            recordSample(current)
+            if (campingElapsedMs() - current.elapsedSimMs >= CampingRecorder.SAMPLE_INTERVAL_SIM_MS) {
+                recordSample(current)
+            }
         }
     }
 
     internal suspend fun recordSample(current: CampingState) {
-        val elapsed = current.elapsedSimMs + CampingRecorder.SAMPLE_INTERVAL_SIM_MS
+        val elapsed = campingElapsedMs()
         val s = sample(elapsed)
-        var notice: String? = current.notice
-        var triggered = current.protectionTriggered
+        var notice = current.notice
+        var triggered = current.protectionTriggered && vehicle.value.connected && vehicle.value.hvacPowerKnown && !s.hvacOn
         val energy = s.energyPct
-        if (!triggered && energy != null && energy <= current.protectionThresholdPct && s.hvacOn) {
-            gateways.vehicle.setHvacPower(false)
-            triggered = true
-            notice = "잔량이 ${current.protectionThresholdPct}% 아래로 내려가 공조를 껐어요"
+        if (energy != null && energy in 0f..current.protectionThresholdPct.toFloat() && s.hvacOn) {
+            val accepted = vehicle.value.connected && DriveGuard.canControl(vehicle.value) && gateways.vehicle.setHvacPower(false)
+            triggered = accepted && withTimeoutOrNull(3_000L) {
+                vehicle.first { it.connected && it.hvacPowerKnown && !it.hvacOn }
+            } != null
+            notice = when {
+                triggered -> "잔량 보호를 위해 공조를 껐어요"
+                !accepted -> "공조 끄기에 실패했어요. 차량의 공조 상태를 확인해 주세요."
+                else -> "공조 끄기를 요청했지만 꺼짐을 확인하지 못했어요. 차량 상태를 확인해 주세요."
+            }
+        } else if (s.hvacOn || !triggered) {
+            notice = null
         }
-        _camping.update {
-            it?.copy(
-                samples = it.samples + s,
+        _camping.update { active ->
+            if (active == null || active.visit?.id != current.visit?.id) active
+            else active.copy(
+                samples = active.samples + s,
                 elapsedSimMs = elapsed,
                 protectionTriggered = triggered,
                 notice = notice,
@@ -302,7 +398,11 @@ class TripStore(
 
     private fun sample(elapsedMs: Long): CampingSample {
         val snap = vehicle.value
-        return CampingSample(elapsedMs, snap.cabinTempC, snap.energyPct, snap.hvacOn, snap.wiperActive)
+        val energy = when (repos.user.user.value.car.powerType) {
+            PowerType.EV -> snap.batteryPct
+            PowerType.ICE -> snap.fuelPct
+        }
+        return CampingSample(elapsedMs, snap.cabinTempC, energy, snap.hvacOn, snap.wiperActive)
     }
 
     fun endCamping(): FinishedCamping? {
@@ -311,6 +411,11 @@ class TripStore(
         val userBefore = repos.user.user.value
         val before = statusBeforeVisit ?: status()
 
+        val comparison = if (userBefore.car.powerType == PowerType.EV) {
+            val snap = vehicle.value
+            BatteryComparison(state.initialMorningPct, snap.batteryPct?.takeIf { snap.connected && it in 0f..100f }?.toDouble(),
+                campingElapsedMs() / 60_000L, state.plannedMinutes, state.wakeAt?.toString())
+        } else null
         val report = if (state.recording) {
             CampingRecorder.buildReport(
                 id = newId("report"),
@@ -319,7 +424,7 @@ class TripStore(
                 car = userBefore.car,
                 month = date.monthValue,
                 createdAt = date.toString(),
-            )
+            )?.copy(batteryComparison = comparison)
         } else {
             null
         }
@@ -334,6 +439,7 @@ class TripStore(
         }
 
         repos.spots.leave(state.spot.id)
+        selectWakeTime(null)
         finishedSpotId = state.spot.id
         _camping.value = null
         _certifiedVisit.value = null
@@ -343,6 +449,7 @@ class TripStore(
             spot = state.spot,
             visit = state.visit,
             report = report,
+            batteryComparison = comparison,
             creditsEarned = credits,
             before = before,
             after = status(),
