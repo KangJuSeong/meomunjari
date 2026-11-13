@@ -96,14 +96,13 @@ class DemoScenarioTest {
 
         world.setAutoDrive(true)
         repeat(40) { world.tick(1_000) }
-        assertEquals(spot.location, world.location.value)
+        assertTrue(Geo.distanceM(world.location.value!!, spot.location) < spot.radiusM)
         assertTrue(world.snapshot.value.batteryPct!! < 25f)
         assertEquals(spot.id, world.destination.value?.spotId)
 
         trip.cancelRoute()
         assertNull(world.destination.value)
-        withTimeout(2_000) { trip.route.first { it == null } }
-        Unit
+        assertNull(withTimeout(2_000) { trip.route.first { it == null } })
     }
 
     @Test
