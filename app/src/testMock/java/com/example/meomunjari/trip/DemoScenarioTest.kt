@@ -35,7 +35,8 @@ class DemoScenarioTest {
     private val repos = Fixtures.seed().toRepositories()
     private val timeScale = MutableStateFlow(600)
     private val world = SimulatedWorld(scope, timeScale, { repos.spots.spots.value })
-    private var clock = 0L
+    private var clock = java.time.LocalDateTime.of(2026, 11, 3, 23, 0)
+        .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
     private var ignorePowerCommand = false
     private val vehicle = object : com.example.meomunjari.core.vehicle.VehicleGateway by world {
         override suspend fun setHvacPower(on: Boolean): Boolean =
@@ -59,7 +60,7 @@ class DemoScenarioTest {
     fun chargeWaypointRetainsFinalCampsite() = runBlocking {
         val spot = repos.spots.get("s-003")!!
         val records = CampingEnergyPlanner.matchingReports(repos.reports.reports.value, spot, 11)
-        val night = CampingEnergyPlanner.estimateNight(spot.overnightTemperaturesC, records)
+        val night = CampingEnergyPlanner.estimateNight(spot, java.time.LocalTime.of(23, 0), records)
         val from = world.location.value!!
         val stop = CampingEnergyPlanner.plan(25.0, from, spot, repos.user.user.value.car, 5.1,
             night, mockChargingStations)!!.stop!!

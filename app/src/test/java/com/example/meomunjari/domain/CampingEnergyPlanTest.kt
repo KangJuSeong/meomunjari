@@ -63,13 +63,50 @@ class CampingEnergyPlanTest {
         assertNull(stranded.via)
     }
 
+    @Test fun hourlySeedCoversEachSpotAndUsesWallClockBoundaries() {
+        val keys = (0..23).map { java.time.LocalTime.of(it, 0).toString() }.toSet()
+        seed.spots.forEach { assertEquals(it.id, keys, it.hourlyTemperaturesC.keys) }
+        // 방태산 18:00 = 10°C, 19:00 = 9°C. 정각까지는 대기 소모만 있다.
+        val start = java.time.LocalTime.of(18, 45)
+        val night = CampingEnergyPlanner.estimateNight(spot, start, records, stayMinutes = 60)!!
+        assertEquals(0.75, night.heatingHours, 0.0)
+        val live = CampingEnergyPlanner.estimateNight(spot, start, records, elapsedHours = 0.5,
+            hvacNow = false, stayMinutes = 60)!!
+        assertEquals(0.0, live.heatingHours, 0.0)
+    }
+
+    @Test fun midnightPartialHoursAndMissingWeather() {
+        val midnight = spot.copy(hourlyTemperaturesC = mapOf("23:00" to 11.0, "00:00" to 8.0))
+        val start = java.time.LocalTime.of(23, 40)
+        fun estimate(minutes: Int) = CampingEnergyPlanner.estimateNight(midnight, start, records, stayMinutes = minutes)
+        assertEquals(0.5, estimate(50)!!.heatingHours, 0.0)
+        assertEquals(1.0, estimate(80)!!.heatingHours, 0.0)
+        assertNull(estimate(81))
+        val legacy = spot.copy(hourlyTemperaturesC = emptyMap(), overnightTemperaturesC = listOf(12.0, 5.0))
+        assertEquals(0.0, CampingEnergyPlanner.estimateNight(legacy, start, records, stayMinutes = 50)!!.heatingHours, 0.0)
+    }
+
+    @Test fun directAndChargingStopUseTheirOwnArrivalHours() {
+        val tripStart = departure.withHour(17).withMinute(35)
+        val result = CampingEnergyPlanner.compareRoutes(62.0, start, spot, seed.user.car, 5.1,
+            tripStart, java.time.LocalTime.of(20, 0), records, mockChargingStations)!!
+        val direct = result.direct
+        val via = result.via!!
+        assertEquals(java.time.LocalTime.of(18, 45), direct.arrival.toLocalTime())
+        assertEquals(java.time.LocalTime.of(19, 0), via.arrival.toLocalTime())
+        val directDrain = direct.arrivalPct - direct.morningPct!!
+        val viaDrain = via.arrivalPct - via.morningPct!!
+        val idleRate = CampingEnergyPlanner.estimateNight(listOf(12.0), records, stayMinutes = 60)!!.drainPct
+        assertEquals(idleRate / 4, directDrain - viaDrain, 0.0001)
+    }
+
     @Test fun insufficientRecordsAndMissingForecast() {
         val r = records.first()
         val mixed = listOf(r, r, r.copy(id = "ice", powerType = PowerType.ICE), r.copy(id = "missing", hasEnergyReading = false),
             r.copy(id = "other", spotId = "other"), r.copy(id = "month", month = 2))
         val eligible = CampingEnergyPlanner.matchingReports(mixed, spot, 11)
         assertEquals(1, eligible.size)
-        assertNull(CampingEnergyPlanner.estimateNight(spot.overnightTemperaturesC, eligible))
+        assertNull(CampingEnergyPlanner.estimateNight(spot, java.time.LocalTime.MIDNIGHT, eligible))
         assertNull(CampingEnergyPlanner.estimateNight(emptyList(), records))
         assertNull(plan(65.0, null).morningPct)
         assertTrue(plan(1.0, null).requiresCharge)

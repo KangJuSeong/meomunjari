@@ -22,6 +22,7 @@ data class CampingSample(
 
 data class CampingState(
     val spot: Spot,
+    val startedAt: LocalTime,
     val visit: Visit?,
     val preset: SettingPreset,
     val applyResults: List<ApplyItemResult>,

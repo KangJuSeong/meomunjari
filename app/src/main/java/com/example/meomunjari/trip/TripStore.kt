@@ -314,7 +314,7 @@ class TripStore(
         val plannedMinutes = WakeSchedule.stayMinutes(startTime, wakeAt)
         val initialMorningPct = if (user.car.powerType == PowerType.EV && snapshot.connected) {
             val records = CampingEnergyPlanner.matchingReports(repos.reports.forSpot(spot.id), spot, visit.month)
-            val night = CampingEnergyPlanner.estimateNight(spot.overnightTemperaturesC, records, hvacNow = snapshot.hvacOn.takeIf { snapshot.hvacPowerKnown }, stayMinutes = plannedMinutes)
+            val night = CampingEnergyPlanner.estimateNight(spot, startTime, records, hvacNow = snapshot.hvacOn.takeIf { snapshot.hvacPowerKnown }, stayMinutes = plannedMinutes)
             val battery = snapshot.batteryPct
             if (battery != null && battery in 0f..100f && night != null) (battery - night.drainPct).coerceAtLeast(0.0)
             else null
@@ -331,6 +331,7 @@ class TripStore(
             initialMorningPct = initialMorningPct,
             plannedMinutes = plannedMinutes,
             wakeAt = wakeAt,
+            startedAt = startTime,
         )
         _camping.value = state
         _finished.value = null
