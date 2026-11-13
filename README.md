@@ -22,6 +22,8 @@ Android SDK 및 Google Maven·Pleos 저장소 접근이 필요합니다. 내비 
 
 [기획 v1](docs/application-v1.md) · [기획 v2](docs/application-v2.md) · [문장별 변경표](docs/changes-v1-v2.md) · [에너지 계산과 시장 수치 근거](docs/energy-and-evidence-v2.md) · [기상 시각 v2.2](docs/wake-time-v2.2.md) · [충전 화면 v2.3](docs/charging-screen-v2.3.md) · [출발 전 경로 비교 v2.4](docs/departure-comparison-v2.4.md) · [시간대별 목업 편집 v2.5](docs/hourly-weather-v2.5.md)
 
+신청서 수정본은 [v3 기대효과](docs/application-v3.md), [v4 차량에서 해결할 문제](docs/application-v4.md), [v5 에너지 예측](docs/application-v5.md), [v6 차종별 공조 전력 계산 계획](docs/application-v6.md) 순서로 확인할 수 있습니다. v2.5 목업의 [기상 시각 종료 리포트](docs/images/wake-v2.5-mock.png)는 8시간 체류 뒤 예측과 목업 차량 잔량을 비교한 화면입니다.
+
 ## 시연 시나리오 (mock 플레이버)
 
 1. **테마 검색** → `#별보기`, `#반려견동반` → '내 차가 들어갈 수 있는 곳만' 켜짐 → 미시령 옛길(소형 SUV까지)이 빠짐
