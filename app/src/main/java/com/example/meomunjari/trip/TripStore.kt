@@ -4,12 +4,15 @@ import com.example.meomunjari.core.Geo
 import com.example.meomunjari.core.Gateways
 import com.example.meomunjari.core.model.Amenities
 import com.example.meomunjari.core.model.LatLng
+import com.example.meomunjari.core.model.PowerType
 import com.example.meomunjari.core.model.Review
 import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.model.Spot
 import com.example.meomunjari.core.model.TagCount
 import com.example.meomunjari.core.model.VehicleClass
 import com.example.meomunjari.core.model.Visit
+import com.example.meomunjari.core.navi.ChargingStop
+import com.example.meomunjari.domain.CampingEnergyPlanner
 import com.example.meomunjari.core.navi.NaviDestination
 import com.example.meomunjari.core.vehicle.ApplyItemResult
 import com.example.meomunjari.core.vehicle.VehicleSnapshot
@@ -94,8 +97,15 @@ class TripStore(
     private val _destination = MutableStateFlow<Spot?>(null)
     val destination: StateFlow<Spot?> = _destination.asStateFlow()
 
-    val route: StateFlow<RouteProgress?> = combine(_destination, gateways.location.location) { spot, loc ->
-        if (spot == null || loc == null) null else RouteProgress.estimate(loc, spot)
+    val chargingStop = gateways.navi.chargingStop
+    val route: StateFlow<RouteProgress?> = combine(_destination, gateways.location.location, chargingStop) { spot, loc, via ->
+        if (spot == null || loc == null) null
+        else if (via == null) RouteProgress.estimate(loc, spot)
+        else {
+            val km = CampingEnergyPlanner.roadKm(loc, via.station.location) +
+                CampingEnergyPlanner.roadKm(via.station.location, spot.location)
+            RouteProgress(km, (km / 45 * 60).toInt() + via.minutes)
+        }
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
     private val _arrival = MutableStateFlow<ArrivalStatus?>(null)
@@ -139,6 +149,11 @@ class TripStore(
         loops = listOf(
             scope.launch { while (isActive) { evaluateArrival(); delay(500) } },
             scope.launch { campingLoop() },
+            scope.launch {
+                gateways.navi.destination.collect { active ->
+                    if (active == null && gateways.navi.destination.value == null) _destination.value = null
+                }
+            },
         )
     }
 
@@ -149,9 +164,9 @@ class TripStore(
 
     // ---------- 목적지 ----------
 
-    suspend fun navigateTo(spot: Spot): Boolean {
+    suspend fun navigateTo(spot: Spot, via: ChargingStop? = null): Boolean {
         val ok = gateways.navi.requestRoute(
-            NaviDestination(spot.id, spot.name, spot.location, spot.region),
+            NaviDestination(spot.id, spot.name, spot.location, spot.region), via,
         )
         if (ok) _destination.value = spot
         return ok
@@ -302,7 +317,11 @@ class TripStore(
 
     private fun sample(elapsedMs: Long): CampingSample {
         val snap = vehicle.value
-        return CampingSample(elapsedMs, snap.cabinTempC, snap.energyPct, snap.hvacOn, snap.wiperActive)
+        val energy = when (repos.user.user.value.car.powerType) {
+            PowerType.EV -> snap.batteryPct
+            PowerType.ICE -> snap.fuelPct
+        }
+        return CampingSample(elapsedMs, snap.cabinTempC, energy, snap.hvacOn, snap.wiperActive)
     }
 
     fun endCamping(): FinishedCamping? {

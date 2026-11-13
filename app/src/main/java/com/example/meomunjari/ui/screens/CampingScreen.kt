@@ -32,6 +32,9 @@ import com.example.meomunjari.ui.components.EmptyState
 import com.example.meomunjari.ui.components.Pill
 import com.example.meomunjari.ui.components.PrimaryButton
 import com.example.meomunjari.ui.components.ScreenHeader
+import com.example.meomunjari.core.model.PowerType
+import com.example.meomunjari.domain.CampingEnergyPlanner
+import java.time.LocalDate
 import com.example.meomunjari.ui.components.SectionCard
 import com.example.meomunjari.ui.components.Sparkline
 import com.example.meomunjari.ui.components.StatTile
@@ -48,6 +51,7 @@ fun CampingScreen(onFinished: () -> Unit) {
     val camping by trip.camping.collectAsStateWithLifecycle()
     val vehicle by trip.vehicle.collectAsStateWithLifecycle()
     val scale by trip.timeScale.collectAsStateWithLifecycle()
+    val reports by c.repos.reports.reports.collectAsStateWithLifecycle()
     val user by c.repos.user.user.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -121,6 +125,20 @@ fun CampingScreen(onFinished: () -> Unit) {
             }
 
             Column(Modifier.weight(0.8f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                if (user.car.powerType == PowerType.EV) {
+                    SectionCard(title = "아침 예상 잔량") {
+                        val records = CampingEnergyPlanner.matchingReports(reports, state.spot,
+                            state.visit?.month ?: LocalDate.now().monthValue)
+                        val night = CampingEnergyPlanner.estimateNight(state.spot.overnightTemperaturesC, records,
+                            state.elapsedHours, vehicle.hvacOn, state.protectionTriggered && !vehicle.hvacOn)
+                        val pct = vehicle.batteryPct
+                        Text(when {
+                            records.size < 2 -> "측정중 · EV 기록 ${records.size}/2건"
+                            night == null || pct == null -> "기온 또는 차량 잔량을 확인하고 있어요"
+                            else -> "${Math.round((pct - night.drainPct).coerceAtLeast(0.0))}% · 차박 시작 8시간 기준"
+                        })
+                    }
+                }
                 SectionCard(title = "배터리 지킴이") {
                     Text("잔량이 ${state.protectionThresholdPct}% 아래로 내려가면 공조를 끄고 알려요.", style = MaterialTheme.typography.bodyMedium)
                     Slider(

@@ -58,6 +58,7 @@ object Fixtures {
 
     private fun spot(o: JsonObject) = Spot(
         id = o.s("id")!!, name = o.s("name")!!, region = o.s("region")!!, lat = o.d("lat")!!, lng = o.d("lng")!!,
+        overnightTemperaturesC = o["overnightTemperaturesC"]?.jsonArray.orEmpty().map { it.jsonPrimitive.double },
         radiusM = o.i("radiusM") ?: 300, description = o.s("description").orEmpty(),
         amenities = o["amenities"]!!.jsonObject.let {
             Amenities(it.b("toilet") ?: false, it.i("convenienceStoreM"), it.s("ground").orEmpty(), it.s("noise").orEmpty(), it.b("water") ?: false)
