@@ -90,7 +90,7 @@ object Fixtures {
     private fun preset(o: JsonObject) = SettingPreset(
         id = o.s("id")!!, spotId = o.s("spotId"), ownerNickname = o.s("ownerNickname")!!, ownerGrade = o.s("ownerGrade").orEmpty(),
         title = o.s("title").orEmpty(), targetTempC = o.d("targetTempC") ?: 21.0, hvacOn = o.b("hvacOn") ?: true,
-        seatMemorySlot = o.i("seatMemorySlot"), backrestAngleDeg = o.i("backrestAngleDeg"), windowOpenPct = o.i("windowOpenPct") ?: 0,
+        seatMemorySlot = o.i("seatMemorySlot"), backrestPctBySeat = o["backrestPctBySeat"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content.toInt() } ?: emptyMap(), windowOpenPct = o.i("windowOpenPct") ?: 0,
         openDoorArea = o.s("openDoorArea"), ambientOn = o.b("ambientOn") ?: false, ambientBrightness = o.i("ambientBrightness") ?: 30,
         loadCount = o.i("loadCount") ?: 0, ownerRating = o.d("ownerRating") ?: 0.0,
     )

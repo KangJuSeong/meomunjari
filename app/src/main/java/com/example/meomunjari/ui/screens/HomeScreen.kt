@@ -111,7 +111,7 @@ fun HomeScreen(
                         emoji = "🌙",
                         iconBackground = MColors.Purple50,
                         title = "차박 중 · ${camping.spot.name}",
-                        subtitle = "실측 기록 ${camping.samples.size}개 · 눌러서 보기",
+                        subtitle = if (camping.recording) "밤사이 기록 중 · 눌러서 보기" else "눌러서 보기",
                         onClick = onCamping,
                     )
                 }

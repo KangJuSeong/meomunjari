@@ -13,12 +13,56 @@ internal class AaosCarProperties(private val context: Context) {
     private var car: Any? = null
     private var manager: Any? = null
 
+    /** 속성별 마지막으로 읽은 결과. 1초마다 읽으므로 바뀐 때만 로그를 남긴다. */
+    private val lastLogged = mutableMapOf<Int, String>()
+
+    /**
+     * 차량 서비스에 연결한다. 리스너 없이 Car.createCar(context)로 만들면, 차량 서비스가 재시작될 때
+     * AAOS가 이 앱 프로세스를 같이 죽인다(에뮬레이터에서 VHAL이 강제 종료되며 실제로 발생).
+     * 그래서 수명주기 리스너를 넘겨, 서비스가 내려가면 읽기를 멈추고 다시 올라오면 매니저를 새로 받는다.
+     */
     fun connect(): Boolean = runCatching {
+        PleosLog.info("→ AAOS Car.createCar(context, handler, 대기 안 함, 수명주기 리스너)")
         val carClass = Class.forName("android.car.Car")
-        car = carClass.getMethod("createCar", Context::class.java).invoke(null, context)
-        manager = carClass.getMethod("getCarManager", String::class.java).invoke(car, "property")
-        manager != null
-    }.onFailure { Log.w(TAG, "CarPropertyManager unavailable: ${it.message}") }.getOrDefault(false)
+        val listenerClass = Class.forName("android.car.Car\$CarServiceLifecycleListener")
+        val listener = java.lang.reflect.Proxy.newProxyInstance(listenerClass.classLoader, arrayOf(listenerClass)) { self, method, args ->
+            when (method.name) {
+                "onLifecycleChanged" -> {
+                    val ready = args?.getOrNull(1) as? Boolean ?: false
+                    onCarLifecycle(carClass, args?.getOrNull(0), ready)
+                    null
+                }
+                "equals" -> self === args?.firstOrNull()
+                "hashCode" -> System.identityHashCode(self)
+                "toString" -> "MeomunjariCarLifecycleListener"
+                else -> null
+            }
+        }
+        val createCar = carClass.getMethod(
+            "createCar", Context::class.java, android.os.Handler::class.java,
+            Long::class.javaPrimitiveType, listenerClass,
+        )
+        // 대기 시간 0(CAR_WAIT_TIMEOUT_DO_NOT_WAIT): 연결되면 리스너로 알려준다.
+        car = createCar.invoke(null, context, null, 0L, listener)
+        manager != null || car != null
+    }.onFailure {
+        PleosLog.warn("✗ AAOS Car.createCar: ${it.message}", it)
+        Log.w(TAG, "CarPropertyManager unavailable: ${it.message}")
+    }.getOrDefault(false)
+
+    private fun onCarLifecycle(carClass: Class<*>, newCar: Any?, ready: Boolean) {
+        if (!ready) {
+            manager = null
+            lastLogged.clear()
+            PleosLog.warn("⇠ AAOS 차량 서비스 연결 끊김(재시작 중) → 다시 연결될 때까지 기어·속도 읽기 중단")
+            return
+        }
+        car = newCar ?: car
+        manager = runCatching { carClass.getMethod("getCarManager", String::class.java).invoke(car, "property") }
+            .onFailure { PleosLog.warn("✗ AAOS getCarManager(\"property\"): ${it.message}", it) }
+            .getOrNull()
+        PleosLog.info("⇠ AAOS 차량 서비스 연결됨 → CarPropertyManager ${if (manager != null) "받음" else "없음"}")
+    }
 
     fun gear(): Gear {
         val v = read(GEAR_SELECTION, java.lang.Integer::class.java) as? Int
@@ -42,20 +86,48 @@ internal class AaosCarProperties(private val context: Context) {
      */
     fun outsideTempC(): Float? = read(ENV_OUTSIDE_TEMPERATURE, java.lang.Float::class.java) as? Float
 
-    private fun read(propertyId: Int, type: Class<*>): Any? = runCatching {
+    private fun read(propertyId: Int, type: Class<*>): Any? {
         val m = manager ?: return null
-        val getProperty = m.javaClass.getMethod(
-            "getProperty",
-            Class::class.java,
-            Int::class.javaPrimitiveType,
-            Int::class.javaPrimitiveType,
-        )
-        val value = getProperty.invoke(m, type, propertyId, 0) ?: return null
-        if (value.javaClass.getMethod("getStatus").invoke(value) != 0) return null
-        value.javaClass.getMethod("getValue").invoke(value)
-    }.getOrNull()
+        var outcome = ""
+        val result = runCatching {
+            val getProperty = m.javaClass.getMethod(
+                "getProperty",
+                Class::class.java,
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+            )
+            val value = getProperty.invoke(m, type, propertyId, 0)
+            if (value == null) {
+                outcome = "null"
+                return@runCatching null
+            }
+            val status = value.javaClass.getMethod("getStatus").invoke(value)
+            if (status != 0) {
+                outcome = "status=$status (사용 불가)"
+                return@runCatching null
+            }
+            value.javaClass.getMethod("getValue").invoke(value).also { outcome = PleosLog.fmt(it) }
+        }.onFailure {
+            val cause = (it as? java.lang.reflect.InvocationTargetException)?.targetException ?: it
+            outcome = "✗ ${cause.javaClass.simpleName}: ${cause.message}"
+        }.getOrNull()
+        if (lastLogged[propertyId] != outcome) {
+            lastLogged[propertyId] = outcome
+            PleosLog.info("AAOS getProperty(${propertyName(propertyId)}) = $outcome")
+        }
+        return result
+    }
+
+    private fun propertyName(id: Int): String = when (id) {
+        GEAR_SELECTION -> "GEAR_SELECTION"
+        CURRENT_GEAR -> "CURRENT_GEAR"
+        PERF_VEHICLE_SPEED -> "PERF_VEHICLE_SPEED"
+        ENV_OUTSIDE_TEMPERATURE -> "ENV_OUTSIDE_TEMPERATURE"
+        else -> id.toString()
+    }
 
     fun release() {
+        PleosLog.info("→ AAOS Car.disconnect()")
         runCatching { car?.javaClass?.getMethod("disconnect")?.invoke(car) }
         car = null
         manager = null

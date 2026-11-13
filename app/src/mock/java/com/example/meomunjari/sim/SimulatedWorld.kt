@@ -61,6 +61,7 @@ class SimulatedWorld(
 
     private val _capabilities = MutableStateFlow(ControlItem.entries.toSet())
     override val capabilities: StateFlow<Set<ControlItem>> = _capabilities.asStateFlow()
+    override val seatMemorySlots: StateFlow<IntRange?> = MutableStateFlow<IntRange?>(1..3).asStateFlow()
 
     private val _location = MutableStateFlow<LatLng?>(HOME)
     override val location: StateFlow<LatLng?> = _location.asStateFlow()
@@ -170,7 +171,10 @@ class SimulatedWorld(
             _snapshot.update { s ->
                 when (item) {
                     ControlItem.HVAC -> s.copy(hvacOn = preset.hvacOn, hvacTargetC = preset.targetTempC.toFloat())
-                    ControlItem.SEAT -> s.copy(seatMemorySlot = preset.seatMemorySlot)
+                    ControlItem.SEAT -> s.copy(
+                        seatMemorySlot = preset.seatMemorySlot,
+                        seatBackrestPct = s.seatBackrestPct + preset.backrestPctBySeat,
+                    )
                     ControlItem.WINDOW -> s.copy(windowOpenPct = preset.windowOpenPct)
                     ControlItem.DOOR -> s.copy(doorOpen = true)
                     ControlItem.LIGHT -> s.copy(ambientOn = preset.ambientOn, ambientBrightness = preset.ambientBrightness)
@@ -179,6 +183,16 @@ class SimulatedWorld(
             results += ApplyItemResult(item, ApplyStatus.APPLIED, label)
         }
         return results
+    }
+
+    override suspend fun applySeat(preset: SettingPreset): ApplyItemResult {
+        val label = SettingCompatibility.items(preset).firstOrNull { it.first == ControlItem.SEAT }?.second.orEmpty()
+        if (ControlItem.SEAT !in _capabilities.value) return ApplyItemResult(ControlItem.SEAT, ApplyStatus.UNSUPPORTED)
+        delay(250)
+        _snapshot.update {
+            it.copy(seatMemorySlot = preset.seatMemorySlot, seatBackrestPct = it.seatBackrestPct + preset.backrestPctBySeat)
+        }
+        return ApplyItemResult(ControlItem.SEAT, ApplyStatus.APPLIED, label)
     }
 
     override suspend fun setHvacPower(on: Boolean): Boolean {

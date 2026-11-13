@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 같은 에뮬레이터에 pleos 앱과 함께 깔리므로 런처에서 구분되게 한다. -->
+    <string name="app_name">머문자리 (mock)</string>
+</resources>

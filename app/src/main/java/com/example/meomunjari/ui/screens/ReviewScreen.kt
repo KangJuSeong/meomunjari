@@ -192,7 +192,7 @@ fun ReviewScreen(onDone: () -> Unit) {
                     SectionCard(title = "내 세팅 공개") {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(SettingCompatibility.summary(user.mySetting), style = MaterialTheme.typography.bodyMedium)
+                                Text(SettingCompatibility.summary(SettingCompatibility.forOthers(user.mySetting)), style = MaterialTheme.typography.bodyMedium)
                                 Text("다른 사람이 불러오면 '멘토' 뱃지에 쌓여요", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
                             }
                             Toggle(checked = share, onCheckedChange = { share = it })

@@ -4,6 +4,7 @@ import com.example.meomunjari.Fixtures
 import com.example.meomunjari.core.Geo
 import com.example.meomunjari.core.model.LatLng
 import com.example.meomunjari.core.model.PowerType
+import com.example.meomunjari.core.vehicle.ControlItem
 import com.example.meomunjari.core.vehicle.Gear
 import com.example.meomunjari.core.vehicle.VehicleSnapshot
 import com.example.meomunjari.domain.camping.CampingRecorder
@@ -143,7 +144,45 @@ class DomainTest {
         val master = SettingCompatibility.master(seed.presets.filter { it.spotId == "s-003" }, seed.user.nickname)
         assertNotNull(master)
         assertEquals("별헌터", master!!.ownerNickname)
-        assertEquals("22°C, 시트 메모리 2번 · 등받이 150°, 창문 5% 열기, 조명 끄기", SettingCompatibility.summary(master))
+        assertEquals("22°C, 시트 운전석 등받이 60%, 창문 5% 열기, 조명 끄기", SettingCompatibility.summary(master))
+    }
+
+    @Test
+    fun seatSummaryListsBackrestAnglePerSeat() {
+        val base = seed.user.mySetting.copy(seatMemorySlot = null, backrestPctBySeat = emptyMap())
+        assertTrue(SettingCompatibility.items(base).none { it.first == ControlItem.SEAT })
+
+        val both = base.copy(backrestPctBySeat = mapOf("ROW_1_RIGHT" to 40, "ROW_1_LEFT" to 60))
+        val seat = SettingCompatibility.items(both).first { it.first == ControlItem.SEAT }.second
+        assertEquals("운전석 등받이 60% · 조수석 등받이 40%", seat)
+
+        val withMemory = both.copy(seatMemorySlot = 2)
+        assertEquals("메모리 2번 · 운전석 등받이 60% · 조수석 등받이 40%", SettingCompatibility.items(withMemory).first { it.first == ControlItem.SEAT }.second)
+    }
+
+    @Test
+    fun backrestAnglesAreKeptPerMemorySlot() {
+        val repos = seed.toRepositories()
+        fun angles() = repos.user.user.value.mySetting.backrestPctBySeat
+        // 마이 화면의 슬롯 전환과 같은 규칙을 저장소에 직접 적용한다.
+        fun select(slot: Int?) = repos.user.update { u ->
+            val saved = u.seatSlotBackrests + ((u.mySetting.seatMemorySlot ?: 0) to u.mySetting.backrestPctBySeat)
+            u.copy(mySetting = u.mySetting.copy(seatMemorySlot = slot, backrestPctBySeat = saved[slot ?: 0] ?: emptyMap()), seatSlotBackrests = saved)
+        }
+        fun edit(f: (Map<String, Int>) -> Map<String, Int>) = repos.user.update { u ->
+            val next = f(u.mySetting.backrestPctBySeat)
+            u.copy(mySetting = u.mySetting.copy(backrestPctBySeat = next), seatSlotBackrests = u.seatSlotBackrests + ((u.mySetting.seatMemorySlot ?: 0) to next))
+        }
+        select(1); edit { mapOf("ROW_1_LEFT" to 55) }
+        select(2)
+        assertTrue("새 슬롯은 비어 있어야 한다", angles().isEmpty())
+        edit { mapOf("ROW_1_LEFT" to 25, "ROW_1_RIGHT" to 15) }
+        select(1)
+        assertEquals(mapOf("ROW_1_LEFT" to 55), angles())
+        select(2)
+        assertEquals(mapOf("ROW_1_LEFT" to 25, "ROW_1_RIGHT" to 15), angles())
+        select(null)
+        assertTrue(angles().isEmpty())
     }
 
     @Test
