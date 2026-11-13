@@ -33,6 +33,13 @@ data class Amenities(
 @Serializable
 data class TagCount(val tag: String, val count: Int)
 
+data class RestrictedPlaceReport(
+    val spotId: String,
+    val reporter: String,
+    val note: String,
+    val createdAt: String,
+)
+
 @Serializable
 data class Spot(
     val id: String,
@@ -223,13 +230,4 @@ data class TagDictionary(
     val synonyms: Map<String, String> = emptyMap(),
     /** "1".."12" → 그 달의 추천 태그. */
     val seasonal: Map<String, List<String>> = emptyMap(),
-)
-
-@Serializable
-data class RestrictedZone(
-    val name: String,
-    val lat: Double,
-    val lng: Double,
-    val radiusM: Int,
-    val reason: String,
 )

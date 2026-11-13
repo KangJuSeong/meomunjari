@@ -6,6 +6,7 @@ import com.example.meomunjari.core.model.BatteryComparison
 import com.example.meomunjari.core.model.Amenities
 import com.example.meomunjari.core.model.LatLng
 import com.example.meomunjari.core.model.PowerType
+import com.example.meomunjari.core.model.RestrictedPlaceReport
 import com.example.meomunjari.core.model.Review
 import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.model.Spot
@@ -16,6 +17,7 @@ import com.example.meomunjari.domain.CampingEnergyPlanner
 import com.example.meomunjari.core.navi.NaviDestination
 import com.example.meomunjari.core.vehicle.Gear
 import com.example.meomunjari.core.vehicle.ApplyItemResult
+import com.example.meomunjari.core.vehicle.ApplyStatus
 import com.example.meomunjari.core.vehicle.VehicleSnapshot
 import com.example.meomunjari.data.Repositories
 import com.example.meomunjari.domain.ArrivalStatus
@@ -69,6 +71,8 @@ sealed interface RegisterResult {
     data class Registered(val spot: Spot) : RegisterResult
     data class Restricted(val zoneName: String, val reason: String) : RegisterResult
     data object NoLocation : RegisterResult
+    data object NameRequired : RegisterResult
+    data object NotParked : RegisterResult
     data object Duplicate : RegisterResult
 }
 
@@ -228,8 +232,8 @@ class TripStore(
         refreshParkingAdvice()
     }
 
-    private fun certify(spot: Spot) {
-        statusBeforeVisit = status()
+    private fun certify(spot: Spot, beforeVisit: MemberStatus = status()) {
+        statusBeforeVisit = beforeVisit
         val date = today()
         val visit = Visit(newId("visit"), spot.id, date.toString(), date.monthValue)
         val car = repos.user.user.value.car
@@ -245,8 +249,8 @@ class TripStore(
     /** 반경 안에 등록된 스팟이 없는 곳에 주차 중인가 (신규 등록 제안용). */
     fun isParkedAtUnknownPlace(): Boolean {
         val loc = location.value ?: return false
-        if (!DriveGuard.isParked(vehicle.value)) return false
-        return repos.spots.spots.value.none { Geo.distanceM(loc, it.location) <= maxOf(it.radiusM, 500) }
+        if (!DriveGuard.canRegisterSpot(vehicle.value)) return false
+        return SpotSearch.spotAt(repos.spots.spots.value, loc) == null
     }
 
     // ---------- 주차 방향(일출) ----------
@@ -292,9 +296,10 @@ class TripStore(
         val spot = repos.spots.get(visit.spotId) ?: return StartCampingResult.NoSpot
 
         val results: List<ApplyItemResult> = gateways.vehicle.apply(preset, includeDoor)
-        loadedPresetId?.let { repos.presets.recordLoad(it) }
-
         val user = repos.user.user.value
+        if (loadedPresetId == preset.id && preset.spotId == spot.id && results.any { it.status == ApplyStatus.APPLIED }) {
+            repos.presets.recordLoad(preset.id, user.nickname, visit.id)
+        }
         val snapshot = vehicle.value
         val wakeAt = wakeTime.value
         val startTime = Instant.ofEpochMilli(nowMs()).atZone(ZoneId.systemDefault()).toLocalTime()
@@ -437,10 +442,12 @@ class TripStore(
 
     // ---------- 리뷰·태그 ----------
 
+    @Synchronized
     fun submitReview(rating: Int, text: String, rawTags: List<String>, sharePreset: Boolean): FinishedCamping? {
         val finished = _finished.value ?: return null
+        if (finished.reviewSubmitted) return finished
         val user = repos.user.user.value
-        val normalized = rawTags.map(tags::normalize).filter { it.length > 1 }.distinct()
+        val normalized = tags.normalizeAll(rawTags)
 
         var presetId: String? = null
         if (sharePreset) {
@@ -481,15 +488,23 @@ class TripStore(
 
     // ---------- 스팟 등록 ----------
 
+    fun reportRestrictedPlace(spotId: String, note: String): RestrictedPlaceReport? =
+        repos.spots.reportRestrictedPlace(
+            RestrictedPlaceReport(spotId, repos.user.user.value.nickname, note.trim(), today().toString()),
+        )
+
     fun registerSpot(
         name: String,
         description: String,
         amenities: Amenities,
         rawTags: List<String>,
         maxVehicleClass: VehicleClass,
+        region: String = "",
     ): RegisterResult {
+        if (name.isBlank()) return RegisterResult.NameRequired
         val loc = location.value ?: return RegisterResult.NoLocation
-        repos.reference.zones.firstOrNull { Geo.distanceM(loc, LatLng(it.lat, it.lng)) <= it.radiusM }?.let {
+        if (!DriveGuard.canRegisterSpot(vehicle.value)) return RegisterResult.NotParked
+        restrictedZoneAt(loc)?.let {
             return RegisterResult.Restricted(it.name, it.reason)
         }
         if (SpotSearch.spotAt(repos.spots.spots.value, loc) != null) return RegisterResult.Duplicate
@@ -498,28 +513,27 @@ class TripStore(
         val spot = Spot(
             id = newId("spot"),
             name = name.trim(),
-            region = "강원도",
+            region = region.trim(),
             lat = loc.lat,
             lng = loc.lng,
             description = description.trim(),
             amenities = amenities,
-            tags = rawTags.map(tags::normalize).filter { it.length > 1 }.distinct().map { TagCount(it, 1) },
+            tags = tags.normalizeAll(rawTags).map { TagCount(it, 1) },
             createdAt = today().toString(),
             registeredBy = user.nickname,
             maxVehicleClass = maxVehicleClass,
             photoColors = listOf("#2E4A3F", "#0F1A17"),
         )
+        val beforeRegistration = status()
         repos.spots.register(spot)
         repos.user.update { it.copy(registeredSpotIds = it.registeredSpotIds + spot.id) }
-        certify(spot)
+        certify(spot, beforeRegistration)
         return RegisterResult.Registered(spot)
     }
 
     /** 등록 화면에서 실시간으로 보여줄 금지구역 대조 결과. */
-    fun restrictedZoneAt(loc: LatLng?): String? {
-        loc ?: return null
-        return repos.reference.zones.firstOrNull { Geo.distanceM(loc, LatLng(it.lat, it.lng)) <= it.radiusM }
-            ?.let { "${it.name} — ${it.reason}" }
+    fun restrictedZoneAt(loc: LatLng?) = loc?.let { point ->
+        repos.reference.zones.firstOrNull { it.contains(point) }
     }
 
     // ---------- 공통 ----------

@@ -36,6 +36,7 @@ import com.example.meomunjari.core.vehicle.ControlItem
 import com.example.meomunjari.core.vehicle.Gear
 import com.example.meomunjari.ui.LocalAppContainer
 import com.example.meomunjari.ui.components.Toggle
+import java.util.UUID
 import kotlin.math.roundToInt
 
 /**
@@ -51,6 +52,8 @@ fun VirtualConsolePanel(console: VirtualConsole, onClose: () -> Unit, modifier: 
     val destination by c.trip.destination.collectAsStateWithLifecycle()
     val caps by c.gateways.vehicle.capabilities.collectAsStateWithLifecycle()
     val scale by c.timeScale.collectAsStateWithLifecycle()
+    val presets by c.repos.presets.presets.collectAsStateWithLifecycle()
+    val member by c.repos.user.user.collectAsStateWithLifecycle()
 
     Surface(
         modifier = modifier.width(400.dp).fillMaxHeight().padding(12.dp),
@@ -121,6 +124,17 @@ fun VirtualConsolePanel(console: VirtualConsole, onClose: () -> Unit, modifier: 
                     Checkbox(checked = item in caps, onCheckedChange = { console.setCapability(item, it) })
                     Text(item.label, style = MaterialTheme.typography.bodyLarge)
                 }
+            }
+            HorizontalDivider()
+            Text("공개 세팅 이용 시뮬레이션", style = MaterialTheme.typography.titleMedium)
+            val myPreset = presets.lastOrNull { it.ownerNickname == member.nickname }
+            if (myPreset == null) {
+                Text("차박 리뷰에서 세팅을 공개하면 시험할 수 있어요.")
+            } else {
+                Text("내 세팅 불러온 횟수 · ${member.presetLoadsReceived}회")
+                TextButton(onClick = {
+                    c.repos.presets.recordLoad(myPreset.id, "가상 방문자", UUID.randomUUID().toString())
+                }) { Text("다른 방문자가 ‘${myPreset.title}’ 불러오기") }
             }
         }
     }
