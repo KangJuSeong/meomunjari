@@ -8,6 +8,9 @@ import com.example.meomunjari.core.model.PowerType
 import com.example.meomunjari.core.model.Spot
 import com.example.meomunjari.core.navi.ChargingStop
 import com.example.meomunjari.core.navi.NaviDestination
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.temporal.ChronoUnit
 import kotlin.math.ceil
 import kotlin.math.min
 
@@ -19,6 +22,23 @@ data class CampingEnergyPlan(
     val requiresCharge: Boolean,
     val stop: ChargingStop?,
     val requiredMorningPct: Double,
+)
+
+data class RouteEstimate(
+    val arrival: LocalDateTime,
+    val arrivalPct: Double,
+    val reachable: Boolean,
+    val stayMinutes: Int,
+    val morningPct: Double?,
+    val sampleCount: Int,
+)
+
+data class DepartureComparison(
+    val departure: LocalDateTime,
+    val direct: RouteEstimate,
+    val via: RouteEstimate?,
+    val stop: ChargingStop?,
+    val requiresCharge: Boolean,
 )
 
 object CampingEnergyPlanner {
@@ -61,7 +81,7 @@ object CampingEnergyPlanner {
 
     fun plan(
         nowPct: Double, from: LatLng, spot: Spot, car: CarProfile, efficiency: Double?,
-        night: NightEstimate?, stations: List<NaviDestination>,
+        night: NightEstimate?, stations: List<NaviDestination>, includeOptionalStop: Boolean = false,
     ): CampingEnergyPlan? {
         val effectiveEfficiency = efficiency?.takeIf { it.isFinite() && it > 0 } ?: car.efficiencyKmPerKWh
         if (car.powerType != PowerType.EV || nowPct !in 0.0..100.0 || !car.batteryKWh.isFinite() || car.batteryKWh <= 0 ||
@@ -72,7 +92,7 @@ object CampingEnergyPlanner {
         val morning = night?.let { (arrival - it.drainPct).coerceAtLeast(0.0) }
         val reserve = cost(spot.nearestChargerKm) + EnergyPredictor.RESERVE_PCT
         val low = arrival <= 0 || (morning != null && morning < reserve)
-        val stop = if (!low) null else stations.mapNotNull { station ->
+        val stop = if (!low && !includeOptionalStop) null else stations.mapNotNull { station ->
             val firstKm = roadKm(from, station.location)
             val secondKm = roadKm(station.location, spot.location)
             if (firstKm + secondKm > directKm + maxOf(3.0, directKm * 0.25)) return@mapNotNull null
@@ -80,10 +100,54 @@ object CampingEnergyPlanner {
             val required = cost(secondKm) + (night?.drainPct ?: 0.0) + reserve
             if (atStation < 0 || required > 100) return@mapNotNull null
             val target = min(100.0, required + EnergyPredictor.CHARGE_MARGIN_PCT)
-            val minutes = ceil((target - atStation) / EnergyPredictor.FAST_CHARGE_PCT_PER_MIN / 5).toInt() * 5
-            ChargingStop(station, minutes.coerceAtLeast(5), ceil(target).toInt()) to (firstKm + secondKm)
+            val rate = EnergyPredictor.FAST_CHARGE_PCT_PER_MIN
+            val minutes = if (low) (ceil((target - atStation) / rate / 5).toInt() * 5).coerceAtLeast(5)
+                else minOf(15, ceil((100 - atStation) / rate).toInt())
+            if (minutes <= 0) return@mapNotNull null
+            val departurePct = min(100.0, atStation + minutes * rate)
+            ChargingStop(station, minutes, ceil(if (low) target else departurePct).toInt()) to (firstKm + secondKm)
         }.minByOrNull { it.second }?.first
         return CampingEnergyPlan(arrival.coerceAtLeast(0.0), night, morning, low, stop, reserve)
+    }
+
+    fun drivingMinutes(km: Double): Int = (km / 45.0 * 60).toInt()
+
+    fun compareRoutes(
+        nowPct: Double, from: LatLng, spot: Spot, car: CarProfile, efficiency: Double?,
+        departure: LocalDateTime, wake: LocalTime?, reports: List<MeasurementReport>, stations: List<NaviDestination>,
+    ): DepartureComparison? {
+        val start = departure.truncatedTo(ChronoUnit.MINUTES)
+        val directKm = roadKm(from, spot.location)
+        val directArrival = start.plusMinutes(drivingMinutes(directKm).toLong())
+        val directStay = WakeSchedule.stayMinutes(directArrival.toLocalTime(), wake)
+        val directRecords = matchingReports(reports, spot, directArrival.monthValue)
+        val directNight = estimateNight(spot.overnightTemperaturesC, directRecords, stayMinutes = directStay)
+        val plan = plan(nowPct, from, spot, car, efficiency, directNight, stations, includeOptionalStop = true) ?: return null
+
+        val eff = efficiency?.takeIf { it.isFinite() && it > 0 } ?: car.efficiencyKmPerKWh
+        fun cost(km: Double) = EnergyPredictor.consumptionPct(km, car, eff)
+        val reachable = nowPct >= cost(directKm)
+        val direct = RouteEstimate(directArrival, plan.arrivalPct, reachable, directStay,
+            plan.morningPct.takeIf { reachable }, directRecords.size)
+        val via = plan.stop?.let { stop ->
+            val first = roadKm(from, stop.station.location)
+            val last = roadKm(stop.station.location, spot.location)
+            val arrival = start.plusMinutes(drivingMinutes(first + last).toLong() + stop.minutes)
+            val charged = min(100.0, nowPct - cost(first) + stop.minutes * EnergyPredictor.FAST_CHARGE_PCT_PER_MIN)
+            val arrivalPct = charged - cost(last)
+            // 명시한 기상 시각은 두 경로에 같은 날짜로 고정한다.
+            val stay = if (wake == null) WakeSchedule.DEFAULT_MINUTES
+                else ChronoUnit.MINUTES.between(arrival, directArrival.plusMinutes(directStay.toLong())).toInt()
+            val records = matchingReports(reports, spot, arrival.monthValue)
+            val morning = when {
+                stay < 0 -> null
+                stay == 0 -> arrivalPct
+                else -> estimateNight(spot.overnightTemperaturesC, records, stayMinutes = stay)
+                    ?.let { (arrivalPct - it.drainPct).coerceAtLeast(0.0) }
+            }
+            RouteEstimate(arrival, arrivalPct, true, stay, morning, records.size)
+        }
+        return DepartureComparison(start, direct, via, plan.stop, plan.requiresCharge)
     }
 
     fun roadKm(from: LatLng, to: LatLng) = Geo.distanceM(from, to) * Geo.ROAD_FACTOR / 1000

@@ -58,11 +58,9 @@ import java.time.LocalDate
 
 data class RouteProgress(val remainingKm: Double, val remainingMin: Int) {
     companion object {
-        private const val AVG_KMH = 45.0
-
         fun estimate(from: LatLng, to: Spot): RouteProgress {
             val km = Geo.distanceM(from, to.location) / 1000.0 * Geo.ROAD_FACTOR
-            return RouteProgress(km, (km / AVG_KMH * 60).toInt())
+            return RouteProgress(km, CampingEnergyPlanner.drivingMinutes(km))
         }
     }
 }
@@ -115,7 +113,7 @@ class TripStore(
         else {
             val km = CampingEnergyPlanner.roadKm(loc, via.station.location) +
                 CampingEnergyPlanner.roadKm(via.station.location, spot.location)
-            RouteProgress(km, (km / 45 * 60).toInt() + via.minutes)
+            RouteProgress(km, CampingEnergyPlanner.drivingMinutes(km) + via.minutes)
         }
     }.stateIn(scope, SharingStarted.Eagerly, null)
 

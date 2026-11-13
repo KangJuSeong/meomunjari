@@ -15,6 +15,54 @@ class CampingEnergyPlanTest {
     private fun plan(pct: Double, night: NightEstimate?) =
         CampingEnergyPlanner.plan(pct, start, spot, seed.user.car, 5.1, night, mockChargingStations)!!
 
+    private val departure = java.time.LocalDateTime.of(2026, 11, 3, 23, 0)
+    private fun compare(pct: Double, wake: java.time.LocalTime? = null,
+        reports: List<com.example.meomunjari.core.model.MeasurementReport> = records) =
+        CampingEnergyPlanner.compareRoutes(pct, start, spot, seed.user.car, 5.1,
+            departure, wake, reports, mockChargingStations)!!
+
+    @Test fun comparisonIncludesDetourChargeAndShorterStayBeforeSameWake() {
+        val result = compare(25.0, java.time.LocalTime.of(6, 30))
+        val via = result.via!!
+        val stop = result.stop!!
+        val first = CampingEnergyPlanner.roadKm(start, stop.station.location)
+        val last = CampingEnergyPlanner.roadKm(stop.station.location, spot.location)
+        val minutes = CampingEnergyPlanner.drivingMinutes(first + last) + stop.minutes
+        assertEquals(departure.plusMinutes(minutes.toLong()), via.arrival)
+        assertTrue(via.arrival.toLocalDate() > departure.toLocalDate())
+        assertTrue(via.stayMinutes < result.direct.stayMinutes)
+        assertEquals(result.direct.arrival.plusMinutes(result.direct.stayMinutes.toLong()),
+            via.arrival.plusMinutes(via.stayMinutes.toLong()))
+        val arrivalPct = 25.0 - EnergyPredictor.consumptionPct(first + last, seed.user.car, 5.1) + stop.minutes
+        assertEquals(arrivalPct, via.arrivalPct, 0.0001)
+        assertEquals(arrivalPct - via.stayMinutes / 60.0 * 1.75, via.morningPct!!, 0.0001)
+    }
+
+    @Test fun optionalChargeAndDefaultNightAreAvailableEvenWhenDirectIsEnough() {
+        val result = compare(62.0)
+        assertFalse(result.requiresCharge)
+        assertEquals(15, result.stop!!.minutes)
+        assertEquals(480, result.direct.stayMinutes)
+        assertEquals(480, result.via!!.stayMinutes)
+        assertTrue(result.via.morningPct!! > result.direct.morningPct!!)
+        val high = compare(99.0)
+        assertTrue(high.stop!!.minutes < 15)
+        assertTrue(high.via!!.arrivalPct < 100)
+    }
+
+    @Test fun comparisonExplainsMissingDataAndArrivalAfterWake() {
+        val directArrival = compare(25.0).direct.arrival
+        val late = compare(25.0, directArrival.toLocalTime().plusMinutes(1)).via!!
+        assertTrue(late.stayMinutes < 0)
+        assertNull(late.morningPct)
+        val sparse = compare(62.0, reports = records.take(1))
+        assertNull(sparse.direct.morningPct)
+        assertNull(sparse.via!!.morningPct)
+        val stranded = compare(0.0)
+        assertFalse(stranded.direct.reachable)
+        assertNull(stranded.via)
+    }
+
     @Test fun insufficientRecordsAndMissingForecast() {
         val r = records.first()
         val mixed = listOf(r, r, r.copy(id = "ice", powerType = PowerType.ICE), r.copy(id = "missing", hasEnergyReading = false),
