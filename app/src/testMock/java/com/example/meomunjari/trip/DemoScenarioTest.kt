@@ -8,7 +8,6 @@ import com.example.meomunjari.core.model.LatLng
 import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.model.VehicleClass
 import com.example.meomunjari.domain.CampingEnergyPlanner
-import com.example.meomunjari.data.mock.mockChargingStations
 import com.example.meomunjari.core.vehicle.ApplyStatus
 import com.example.meomunjari.core.vehicle.ControlItem
 import com.example.meomunjari.core.vehicle.Gear
@@ -27,7 +26,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -82,70 +84,25 @@ class DemoScenarioTest {
     }
 
     @Test
-    fun chargeWaypointRetainsFinalCampsite() = runBlocking {
+    fun lowBatteryRouteLeadsToTheSelectedCampsite() = runBlocking {
         val spot = repos.spots.get("s-003")!!
-        val user = repos.user.user.value
-        val night = CampingEnergyPlanner.estimateNight(spot, java.time.LocalTime.of(23, 0), user.car,
-            user.mySetting.targetTempC, user.mySetting.hvacOn)
         val from = world.location.value!!
-        val stop = CampingEnergyPlanner.plan(25.0, from, spot, repos.user.user.value.car, 5.1,
-            night, mockChargingStations)!!.stop!!
         world.setBattery(25f)
         assertTrue(trip.navigateTo(spot))
-        assertTrue(trip.navigateTo(spot, stop))
-        assertEquals(spot.id, world.destination.value?.spotId)
+        val distance = CampingEnergyPlanner.roadKm(from, spot.location)
+        val route = withTimeout(2_000) { trip.route.filterNotNull().first() }
+        assertEquals(distance, route.remainingKm, 0.001)
+        assertEquals(CampingEnergyPlanner.drivingMinutes(distance), route.remainingMin)
+
         world.setAutoDrive(true)
-        var ticks = 0
-        while (world.chargingStop.value != null && ticks++ < 100) world.tick(1_000)
-        assertEquals(stop.station.location, world.location.value)
-        assertEquals(spot.id, world.destination.value?.spotId)
-        assertEquals(stop, world.arrivedStop.value)
-        assertEquals(Gear.PARK, world.snapshot.value.gear)
-        val arrivalPct = world.snapshot.value.batteryPct!!
-        world.tick(1_000)
-        assertEquals(arrivalPct, world.snapshot.value.batteryPct!!)
-        world.setCharging(true)
-        world.tick(1_000)
-        assertTrue(world.snapshot.value.batteryPct!! in (arrivalPct + 9f)..(arrivalPct + 11f))
-        world.setCharging(false)
-        val paused = world.snapshot.value.batteryPct!!
-        world.tick(1_000)
-        assertEquals(paused, world.snapshot.value.batteryPct!!)
-        world.setCharging(true)
-        repeat(3) { world.tick(1_000) }
-        assertTrue(world.snapshot.value.batteryPct!! >= stop.targetPct!!)
-        assertEquals(stop.station.location, world.location.value)
-        trip.leaveChargingStop()
-        assertNull(world.arrivedStop.value)
         repeat(40) { world.tick(1_000) }
         assertTrue(Geo.distanceM(world.location.value!!, spot.location) < spot.radiusM)
-        assertTrue(trip.navigateTo(spot, stop))
-        trip.cancelRoute()
-        assertNull(world.chargingStop.value)
-        assertNull(world.destination.value)
-    }
+        assertTrue(world.snapshot.value.batteryPct!! < 25f)
+        assertEquals(spot.id, world.destination.value?.spotId)
 
-    @Test
-    fun leavingEarlyAndCancellingAtStationClearCharging() = runBlocking {
-        val spot = repos.spots.get("s-003")!!
-        val stop = com.example.meomunjari.core.navi.ChargingStop(mockChargingStations.first(), 15, 70)
-        repeat(2) { attempt ->
-            world.setLocation(stop.station.location)
-            trip.navigateTo(spot, stop)
-            world.setAutoDrive(true)
-            world.tick(1_000)
-            assertEquals(stop, trip.arrivedStop.value)
-            world.setCharging(true)
-            if (attempt == 0) {
-                trip.leaveChargingStop()
-                assertEquals(spot.id, world.destination.value?.spotId)
-            } else {
-                trip.cancelRoute()
-                assertNull(world.destination.value)
-            }
-            assertNull(trip.arrivedStop.value)
-            assertEquals(com.example.meomunjari.core.vehicle.ChargeState.IDLE, world.snapshot.value.chargeState)
-        }
+        trip.cancelRoute()
+        assertNull(world.destination.value)
+        assertNull(withTimeout(2_000) { trip.route.first { it == null } })
     }
 
     @Test

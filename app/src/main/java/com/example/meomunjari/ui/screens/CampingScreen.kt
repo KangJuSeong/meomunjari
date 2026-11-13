@@ -11,7 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
-import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.WbSunny
@@ -73,7 +73,7 @@ fun CampingScreen(onFinished: () -> Unit) {
                         user.car.powerType.energyLabel,
                         vehicle.energyPct?.let { "${(it * 10).roundToInt() / 10.0}%" } ?: "-",
                         Modifier.weight(1f),
-                        icon = Icons.Filled.BatteryChargingFull,
+                        icon = Icons.Filled.BatteryStd,
                         accent = if (state.protectionTriggered) MColors.Danger else MaterialTheme.colorScheme.onSurface,
                     )
                     StatTile(

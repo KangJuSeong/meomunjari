@@ -1,15 +1,11 @@
 package com.example.meomunjari.pleos
 
 import ai.pleos.playground.navi.constants.NaviErrorCode
-import ai.pleos.playground.navi.constants.WaypointCmdType
-import ai.pleos.playground.navi.constants.WaypointIndex
-import ai.pleos.playground.navi.data.RouteWithWaypointsRequest
-import ai.pleos.playground.navi.data.WaypointChangedInfo
+import ai.pleos.playground.navi.data.RouteInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import android.util.Log
 import com.example.meomunjari.core.model.LatLng
-import com.example.meomunjari.core.navi.ChargingStop
 import com.example.meomunjari.core.navi.NaviDestination
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -22,8 +18,7 @@ import org.mockito.kotlin.*
 class PleosNaviGatewayTest {
     private val sdk = mock<NaviHelper>()
     private val gateway = PleosNaviGateway(sdk)
-    private val camp = NaviDestination("spot", "차박지", LatLng(37.1, 128.1))
-    private val via = ChargingStop(NaviDestination("ev", "충전소", LatLng(37.2, 128.2)), 15)
+    private val camp = NaviDestination("spot", "차박지", LatLng(37.1, 128.1), "강원도")
 
     private fun connect(): NaviHelperEventListener {
         doAnswer {
@@ -37,79 +32,67 @@ class PleosNaviGatewayTest {
     }
 
     @Test
-    fun newRouteIncludesWaypointAndOnlyPublishesOnConfirmation() = runBlocking {
+    fun directRoutePublishesCampsiteOnConfirmationAndEndsWithNavigation() = runBlocking {
         val listener = connect()
-        val pending = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp, via) }
-        val request = argumentCaptor<RouteWithWaypointsRequest>()
-        verify(sdk).requestRouteWithWaypoints(request.capture())
-        assertEquals(camp.name, request.firstValue.destination.poiName)
-        val station = request.firstValue.waypoints.single()
-        assertEquals(WaypointIndex.FIRST, station.waypointIndex)
-        assertEquals(via.station.location.lat, station.latitude, 0.0)
-        assertEquals(via.station.location.lng, station.longitude, 0.0)
+        val request = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp) }
+        val route = argumentCaptor<RouteInfo>()
+        verify(sdk).requestRoute(route.capture())
+        assertEquals(camp.name, route.firstValue.poiName)
+        assertEquals(camp.address, route.firstValue.address)
+        assertEquals(camp.location.lat, route.firstValue.latitude, 0.0)
+        assertEquals(camp.location.lng, route.firstValue.longitude, 0.0)
         assertNull(gateway.destination.value)
         listener.onRoutingCompleted()
-        assertTrue(pending.await())
-        assertEquals(camp, gateway.destination.value)
-        assertEquals(via, gateway.chargingStop.value)
-    }
-
-    @Test
-    fun arrivingAtFirstWaypointKeepsStationUntilDeparture() = runBlocking {
-        val listener = connect()
-        val request = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp, via) }
-        listener.onRoutingCompleted()
         assertTrue(request.await())
-        val arrival = mock<ai.pleos.playground.navi.data.WaypointArrivedInfo> {
-            on { index } doReturn WaypointIndex.FIRST
-        }
-        listener.onWayPointArrived(arrival)
-        listener.onWayPointArrived(arrival)
-        assertNull(gateway.chargingStop.value)
-        assertEquals(via, gateway.arrivedStop.value)
-        gateway.leaveChargingStop()
-        assertNull(gateway.arrivedStop.value)
         assertEquals(camp, gateway.destination.value)
-        verify(sdk, never()).cancelRoute()
+        assertTrue(gateway.requestRoute(camp))
+        verify(sdk, times(1)).requestRoute(any())
+        listener.onRouteEnded()
+        assertNull(gateway.destination.value)
     }
 
     @Test
-    fun addingToCurrentRouteRequiresWaypointAcknowledgement() = runBlocking {
+    fun cancellationWhileConfirmationIsPendingDoesNotRestoreDestination() = runBlocking {
         val listener = connect()
-        val direct = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp) }
+        val request = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp) }
         listener.onRoutingCompleted()
-        assertTrue(direct.await())
-        val adding = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp, via) }
-        verify(sdk).addWaypoint(argThat { poiName == via.station.name && waypointIndex == WaypointIndex.FIRST })
+        gateway.cancelRoute()
+        verify(sdk).cancelRoute()
+        assertFalse(request.await())
+        assertNull(gateway.destination.value)
+    }
+
+    @Test
+    fun sdkCancellationStopsPendingRequest() = runBlocking {
+        val listener = connect()
+        val request = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp) }
+        listener.onRouteCancelled()
         listener.onRoutingCompleted()
-        assertFalse(adding.isCompleted)
-        listener.onWaypointChanged(WaypointChangedInfo(WaypointIndex.FIRST, WaypointCmdType.ADD, mock()))
-        assertTrue(adding.await())
-        assertEquals(camp, gateway.destination.value)
-        assertEquals(via, gateway.chargingStop.value)
+        assertFalse(request.await())
+        assertNull(gateway.destination.value)
     }
 
     @Test
     fun disconnectedOrPermissionDeniedDoesNotPublishRoute() = runBlocking {
-        assertFalse(gateway.requestRoute(camp, via))
+        assertFalse(gateway.requestRoute(camp))
         verifyNoInteractions(sdk)
         connect()
-        doThrow(SecurityException("denied")).whenever(sdk).requestRouteWithWaypoints(any())
-        mockStatic(Log::class.java).use { assertFalse(gateway.requestRoute(camp, via)) }
+        doThrow(SecurityException("denied")).whenever(sdk).requestRoute(any())
+        mockStatic(Log::class.java).use { assertFalse(gateway.requestRoute(camp)) }
         assertNull(gateway.destination.value)
-        assertNull(gateway.chargingStop.value)
     }
 
     @Test
-    fun waypointFailurePreservesActiveDestination() = runBlocking {
+    fun failedReplacementPreservesConfirmedDestination() = runBlocking {
         val listener = connect()
-        val direct = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp) }
+        val first = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp) }
         listener.onRoutingCompleted()
-        assertTrue(direct.await())
-        val adding = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp, via) }
+        assertTrue(first.await())
+        val replacement = async(start = CoroutineStart.UNDISPATCHED) {
+            gateway.requestRoute(NaviDestination("other", "다른 스팟", LatLng(38.1, 127.5)))
+        }
         mockStatic(Log::class.java).use { listener.onError(NaviErrorCode.CAUSE_SEARCH_ROUTE) }
-        assertFalse(adding.await())
+        assertFalse(replacement.await())
         assertEquals(camp, gateway.destination.value)
-        assertNull(gateway.chargingStop.value)
     }
 }
