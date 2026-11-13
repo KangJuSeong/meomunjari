@@ -38,7 +38,7 @@ import com.example.meomunjari.domain.BadgeEngine
 import com.example.meomunjari.domain.EnergyForecast
 import com.example.meomunjari.core.model.PowerType
 import com.example.meomunjari.data.mock.mockChargingStations
-import com.example.meomunjari.domain.CampingEnergyPlan
+import com.example.meomunjari.domain.DepartureComparison
 import com.example.meomunjari.domain.CampingEnergyPlanner
 import com.example.meomunjari.domain.EnergyPredictor
 import com.example.meomunjari.domain.Grade
@@ -69,12 +69,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import com.example.meomunjari.domain.WakeSchedule
-import com.example.meomunjari.trip.RouteProgress
 import com.example.meomunjari.ui.components.WakeTimeButton
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flow
-import java.time.LocalTime
+import java.time.LocalDateTime
 import java.time.LocalDate
 
 data class SpotDetailUi(
@@ -84,9 +82,7 @@ data class SpotDetailUi(
     val months: List<Int> = emptyList(),
     val summary: ReportSummary? = null,
     val forecast: EnergyForecast? = null,
-    val evPlan: CampingEnergyPlan? = null,
-    val evRecords: Int = 0,
-    val plannedMinutes: Int = WakeSchedule.DEFAULT_MINUTES,
+    val comparison: DepartureComparison? = null,
     val master: SettingPreset? = null,
     val distanceM: Double? = null,
     val user: UserData? = null,
@@ -103,7 +99,7 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
 
     private val localMinute = flow {
         while (true) {
-            val now = LocalTime.now()
+            val now = LocalDateTime.now()
             emit(now)
             delay((60 - now.second) * 1000L)
         }
@@ -115,13 +111,9 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
         val summary = ReportAggregator.summarize(b.reports, spot.id, m, b.user.car.powerType)
         val distance = loc?.let { Geo.distanceM(it, spot.location) }
         val isEv = b.user.car.powerType == PowerType.EV
-        val records = CampingEnergyPlanner.matchingReports(b.reports, spot, LocalDate.now().monthValue)
-        val travelMinutes = loc?.let { RouteProgress.estimate(it, spot).remainingMin } ?: 0
-        val plannedMinutes = WakeSchedule.stayMinutes(now.plusMinutes(travelMinutes.toLong()), wake)
-        val night = CampingEnergyPlanner.estimateNight(spot.overnightTemperaturesC, records, stayMinutes = plannedMinutes)
-        val evPlan = if (isEv && loc != null && vehicle.batteryPct != null) {
-            CampingEnergyPlanner.plan(vehicle.batteryPct.toDouble(), loc, spot, b.user.car,
-                vehicle.efficiencyKmPerKWh?.toDouble(), night, mockChargingStations)
+        val comparison = if (isEv && vehicle.connected && loc != null && vehicle.batteryPct != null) {
+            CampingEnergyPlanner.compareRoutes(vehicle.batteryPct.toDouble(), loc, spot, b.user.car,
+                vehicle.efficiencyKmPerKWh?.toDouble(), now, wake, b.reports, mockChargingStations)
         } else null
         val forecast = vehicle.energyPct?.takeIf { !isEv && distance != null }?.let { pct ->
             EnergyPredictor.forecast(
@@ -141,9 +133,7 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
             months = (ReportAggregator.monthsWithData(b.reports, spot.id) + LocalDate.now().monthValue).distinct().sorted(),
             summary = summary,
             forecast = forecast,
-            evPlan = evPlan,
-            evRecords = records.size,
-            plannedMinutes = plannedMinutes,
+            comparison = comparison,
             master = SettingCompatibility.master(b.presets.filter { it.spotId == spot.id }, b.user.nickname),
             distanceM = distance,
             user = b.user,
@@ -279,25 +269,14 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
                 SectionCard(title = "내 차로 하룻밤 괜찮을까요?") {
                     if (ui.user?.car?.powerType == PowerType.EV) {
                         WakeTimeButton(wake, container.trip::selectWakeTime)
-                        val plan = ui.evPlan
-                        if (plan == null) Text("현재 위치와 차량 배터리를 확인하고 있어요")
-                        else {
-                            Text("직행 시 도착 잔량 ${plan.arrivalPct.roundToInt()}%")
-                            if (plan.night != null && plan.morningPct != null) {
-                                Text("아침 예상 잔량 ${plan.morningPct.roundToInt()}%", style = MaterialTheme.typography.titleLarge)
-                                Text("도착 후 ${ui.plannedMinutes / 60}시간 ${ui.plannedMinutes % 60}분 · 목업 기온 기준 난방 ${plan.night.heatingHours.roundToInt()}시간 · 총 소모 ${plan.night.drainPct.roundToInt()}%p")
-                                Text("이번 달 EV 기록 ${ui.evRecords}건" + if (ui.evRecords == 2) " · 참고치" else "")
-                            } else if (ui.evRecords < 2) Text("측정중 · 이번 달 EV 기록 ${ui.evRecords}/2건")
-                            else Text("야간 기온 자료를 기다리고 있어요")
-                            if (plan.requiresCharge) {
-                                Text("충전 권고 · ${plan.stop?.let { "${it.station.name}에서 약 ${it.minutes}분 충전" } ?: "도달 가능한 경로상 목업 충전소가 없어요"}")
-                            } else if (plan.morningPct != null) Text("아침에 인근 충전소까지 이동할 여유가 있어요")
-                        }
+                        val comparison = ui.comparison
+                        if (comparison == null) Text("현재 위치와 차량 배터리를 확인하고 있어요")
+                        else DepartureTable(comparison, wake)
                     } else ui.forecast?.let { EnergyFlow(it) } ?: Text("위치와 차량 잔량을 확인하고 있어요")
                 }
-                val stop = ui.evPlan?.stop
+                val stop = ui.comparison?.stop
                 if (stop != null) {
-                    val added = ui.isDestination && activeStop?.station == stop.station
+                    val added = ui.isDestination && activeStop == stop
                     PrimaryButton(
                         text = if (added) "충전소 경유 안내 중" else "충전소를 경유해 차박지로",
                         enabled = !sending && !added,
@@ -313,8 +292,8 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
                     )
                 }
                 PrimaryButton(
-                    text = if (ui.isDestination) "안내 중이에요" else "여기로 바로 갈래요",
-                    enabled = !ui.isDestination && !sending,
+                    text = if (ui.isDestination && activeStop == null) "안내 중이에요" else "여기로 바로 갈래요",
+                    enabled = (!ui.isDestination || activeStop != null) && !sending,
                     onClick = {
                         sending = true
                         scope.launch {
