@@ -10,7 +10,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.domain.DepartureComparison
-import com.example.meomunjari.domain.RouteEstimate
 import com.example.meomunjari.ui.components.ThinDivider
 import com.example.meomunjari.ui.theme.MColors
 import java.time.LocalTime
@@ -20,35 +19,30 @@ import kotlin.math.roundToInt
 @Composable
 internal fun DepartureTable(comparison: DepartureComparison, wake: LocalTime?, setting: SettingPreset) {
     val direct = comparison.direct
-    val via = comparison.via
     val stop = comparison.stop
+    val viaTime = if (stop == null) "—" else "시각 미확인"
     val climate = if (setting.hvacOn) "공조 ${setting.targetTempC.roundToInt()}°C" else "공조 끔"
     Text("${comparison.departure.toLocalTime()} 출발 · 내 기본 세팅 $climate", style = MaterialTheme.typography.bodySmall)
     ComparisonRow("", "직행", "충전소 경유", emphasis = true)
     ThinDivider()
-    fun eta(route: RouteEstimate): String = when {
-        !route.reachable -> "도달 어려움"
-        else -> {
-            val day = ChronoUnit.DAYS.between(comparison.departure.toLocalDate(), route.arrival.toLocalDate())
-            val prefix = if (day == 0L) "" else if (day == 1L) "내일 " else "${day}일 뒤 "
-            prefix + route.arrival.toLocalTime()
-        }
-    }
-    fun morning(route: RouteEstimate): String = when {
-        !route.reachable -> "도달 어려움"
-        route.stayMinutes < 0 -> "기상 후 도착"
-        route.morningPct != null -> "${route.morningPct.roundToInt()}%"
+    val directEta = if (direct.reachable) {
+        val days = ChronoUnit.DAYS.between(comparison.departure.toLocalDate(), direct.arrival.toLocalDate())
+        val prefix = when (days) { 0L -> ""; 1L -> "내일 "; else -> "${days}일 뒤 " }
+        prefix + direct.arrival.toLocalTime()
+    } else "도달 어려움"
+    val directMorning = when {
+        !direct.reachable -> "도달 어려움"
+        direct.morningPct != null -> "${direct.morningPct.roundToInt()}%"
         else -> "예측 자료 부족"
     }
-    ComparisonRow("차박지 도착", eta(direct), via?.let(::eta) ?: "—")
+    ComparisonRow("차박지 도착 예상", directEta, viaTime)
     ComparisonRow("도착 잔량", if (direct.reachable) "${direct.arrivalPct.roundToInt()}%" else "—",
-        via?.let { "${it.arrivalPct.roundToInt()}%" } ?: "—")
+        comparison.viaArrivalPct?.let { "${it.roundToInt()}%" } ?: "—")
     if (wake != null) {
-        fun stay(route: RouteEstimate): String = if (!route.reachable || route.stayMinutes < 0) "—"
-            else "${route.stayMinutes / 60}시간 ${route.stayMinutes % 60}분"
-        ComparisonRow("예상 체류", stay(direct), via?.let(::stay) ?: "—")
+        val stay = if (direct.reachable) "${direct.stayMinutes / 60}시간 ${direct.stayMinutes % 60}분" else "—"
+        ComparisonRow("예상 체류", stay, "—")
     }
-    ComparisonRow(wake?.let { "$it 기상 잔량" } ?: "8시간 뒤 잔량", morning(direct), via?.let(::morning) ?: "—", emphasis = true)
+    ComparisonRow(wake?.let { "$it 기상 잔량" } ?: "8시간 뒤 잔량", directMorning, "—", emphasis = true)
     ThinDivider()
     if (stop == null) {
         Text("도달 가능한 경로상 충전소가 없어요.")
@@ -58,10 +52,12 @@ internal fun DepartureTable(comparison: DepartureComparison, wake: LocalTime?, s
             comparison.requiresCharge -> "권장 충전"
             else -> "선택 충전"
         }
-        Text("${stop.station.name} · $label ${stop.minutes}분", style = MaterialTheme.typography.bodyMedium)
+        Text("${stop.station.name} · 정차 후 $label 약 ${stop.minutes}분", style = MaterialTheme.typography.bodyMedium)
+        Text("충전소까지 걸리는 시간을 알 수 없어 경유 시 차박지 도착 시각과 기상 잔량은 표시하지 않아요.",
+            style = MaterialTheme.typography.bodySmall)
     }
-    if ((direct.reachable && direct.morningPct == null) || (via != null && via.stayMinutes > 0 && via.morningPct == null)) {
-        Text("차종·공조 설정·목업 기온에 맞는 야간 전력 자료가 부족해요. 이 경로의 기상 잔량을 계산할 수 없어요.",
+    if (direct.reachable && direct.morningPct == null) {
+        Text("차종·공조 설정·목업 기온에 맞는 야간 전력 자료가 부족해 직행 시 기상 잔량을 계산할 수 없어요.",
             style = MaterialTheme.typography.bodySmall)
     }
     Text(energyBasisText(setting.hvacOn), style = MaterialTheme.typography.bodySmall)

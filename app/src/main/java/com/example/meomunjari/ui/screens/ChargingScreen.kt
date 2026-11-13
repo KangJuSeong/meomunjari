@@ -15,7 +15,6 @@ import com.example.meomunjari.core.vehicle.ChargeState
 import com.example.meomunjari.domain.CampingEnergyPlanner
 import com.example.meomunjari.domain.EnergyPredictor
 import com.example.meomunjari.domain.WakeSchedule
-import com.example.meomunjari.trip.RouteProgress
 import com.example.meomunjari.ui.LocalAppContainer
 import com.example.meomunjari.ui.components.*
 import com.example.meomunjari.ui.theme.MColors
@@ -37,7 +36,8 @@ fun ChargingScreen(stop: ChargingStop, spot: Spot) {
         }
     }
     val from = stop.station.location
-    val arrival = now.plusMinutes(RouteProgress.estimate(from, spot).remainingMin.toLong())
+    val remainingKm = CampingEnergyPlanner.roadKm(from, spot.location)
+    val arrival = now.plusMinutes(CampingEnergyPlanner.drivingMinutes(remainingKm).toLong())
     val setting = user.mySetting
     val night = CampingEnergyPlanner.estimateNight(spot, arrival.toLocalTime(), user.car, setting.targetTempC, setting.hvacOn,
         stayMinutes = WakeSchedule.stayMinutes(arrival.toLocalTime(), wake))
@@ -68,7 +68,7 @@ fun ChargingScreen(stop: ChargingStop, spot: Spot) {
                     Text("경유 계획의 목표 잔량에 도달했어요.", color = MColors.Teal)
                 } else if (target != null && pct != null && charging) {
                     val minutes = ceil((target - pct) / EnergyPredictor.FAST_CHARGE_PCT_PER_MIN).toInt()
-                    KeyValue("목표 잔량까지 · 계획 기준", "약 ${minutes}분")
+                    KeyValue("목표 잔량까지 남은 충전 시간 · 계획 기준", "약 ${minutes}분")
                 }
             }
             SectionCard(Modifier.weight(1f), title = "지금 출발하면") {

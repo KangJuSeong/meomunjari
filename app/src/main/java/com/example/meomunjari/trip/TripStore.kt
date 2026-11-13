@@ -58,10 +58,14 @@ import java.time.ZoneId
 import java.time.LocalTime
 import java.time.LocalDate
 
-data class RouteProgress(val remainingKm: Double, val remainingMin: Int) {
+data class RouteProgress(val remainingKm: Double, val remainingMin: Int?) {
     companion object {
-        fun estimate(from: LatLng, to: Spot): RouteProgress {
-            val km = Geo.distanceM(from, to.location) / 1000.0 * Geo.ROAD_FACTOR
+        fun estimate(from: LatLng, to: LatLng, via: LatLng?): RouteProgress {
+            if (via != null) {
+                val km = CampingEnergyPlanner.roadKm(from, via) + CampingEnergyPlanner.roadKm(via, to)
+                return RouteProgress(km, null)
+            }
+            val km = CampingEnergyPlanner.roadKm(from, to)
             return RouteProgress(km, CampingEnergyPlanner.drivingMinutes(km))
         }
     }
@@ -111,12 +115,7 @@ class TripStore(
     val chargingStop = gateways.navi.chargingStop
     val route: StateFlow<RouteProgress?> = combine(_destination, gateways.location.location, chargingStop) { spot, loc, via ->
         if (spot == null || loc == null) null
-        else if (via == null) RouteProgress.estimate(loc, spot)
-        else {
-            val km = CampingEnergyPlanner.roadKm(loc, via.station.location) +
-                CampingEnergyPlanner.roadKm(via.station.location, spot.location)
-            RouteProgress(km, CampingEnergyPlanner.drivingMinutes(km) + via.minutes)
-        }
+        else RouteProgress.estimate(loc, spot.location, via?.station?.location)
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
     private val _arrival = MutableStateFlow<ArrivalStatus?>(null)

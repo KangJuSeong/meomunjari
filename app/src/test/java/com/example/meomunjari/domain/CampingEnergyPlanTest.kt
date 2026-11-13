@@ -81,77 +81,55 @@ class CampingEnergyPlanTest {
         assertEquals(1.05, live.energyKWh, 0.000001)
     }
 
-    @Test fun comparisonIncludesDetourChargeAndShorterStayBeforeSameWake() {
+    @Test fun directForecastUsesTheSelectedWakeAndDetourBatteryUsesBothRoadSegments() {
         val result = compare(25.0, LocalTime.of(6, 30))
-        val via = result.via!!
+        assertEquals(departure.toLocalDate().plusDays(1).atTime(0, 10), result.direct.arrival)
+        assertEquals(380, result.direct.stayMinutes)
+        val usedKWh = 0.2 + 0.7 * result.direct.stayMinutes / 60
+        assertEquals(result.direct.arrivalPct - usedKWh / 72.6 * 100, result.direct.morningPct!!, 0.0001)
+
         val stop = result.stop!!
-        val first = CampingEnergyPlanner.roadKm(start, stop.station.location)
-        val last = CampingEnergyPlanner.roadKm(stop.station.location, spot.location)
-        val minutes = CampingEnergyPlanner.drivingMinutes(first + last) + stop.minutes
-        assertEquals(departure.plusMinutes(minutes.toLong()), via.arrival)
-        assertTrue(via.arrival.toLocalDate() > departure.toLocalDate())
-        assertTrue(via.stayMinutes < result.direct.stayMinutes)
-        assertEquals(result.direct.arrival.plusMinutes(result.direct.stayMinutes.toLong()), via.arrival.plusMinutes(via.stayMinutes.toLong()))
-        val arrivalPct = 25.0 - EnergyPredictor.consumptionPct(first + last, car, 5.1) + stop.minutes
-        assertEquals(arrivalPct, via.arrivalPct, 0.0001)
-        val usedKWh = 0.2 + 0.7 * via.stayMinutes / 60
-        assertEquals(arrivalPct - usedKWh / 72.6 * 100, via.morningPct!!, 0.0001)
-        assertTrue(via.morningPct >= plan(100.0, null).requiredMorningPct)
+        val firstKm = CampingEnergyPlanner.roadKm(start, stop.station.location)
+        val lastKm = CampingEnergyPlanner.roadKm(stop.station.location, spot.location)
+        val viaArrival = 25.0 - EnergyPredictor.consumptionPct(firstKm + lastKm, car, 5.1) + stop.minutes
+        assertEquals(viaArrival, result.viaArrivalPct!!, 0.0001)
     }
 
-    @Test fun optionalChargeAndDefaultNightAreAvailableEvenWhenDirectIsEnough() {
+    @Test fun optionalChargeUsesThePlannedAmountUpToBatteryCapacity() {
         val result = compare(62.0)
         assertFalse(result.requiresCharge)
         assertEquals(15, result.stop!!.minutes)
         assertEquals(480, result.direct.stayMinutes)
-        assertEquals(480, result.via!!.stayMinutes)
-        assertTrue(result.via.morningPct!! > result.direct.morningPct!!)
+        assertTrue(result.viaArrivalPct!! > result.direct.arrivalPct)
         val high = compare(99.0)
-        assertTrue(high.stop!!.minutes < 15)
-        assertTrue(high.via!!.arrivalPct < 100)
+        val stop = high.stop!!
+        assertTrue(stop.minutes < 15)
+        val lastKm = CampingEnergyPlanner.roadKm(stop.station.location, spot.location)
+        assertEquals(100.0 - EnergyPredictor.consumptionPct(lastKm, car, 5.1), high.viaArrivalPct!!, 0.0001)
     }
 
-    @Test fun comparisonHandlesMissingDataAndArrivalAfterWake() {
-        val directArrival = compare(25.0).direct.arrival
-        val late = compare(25.0, directArrival.toLocalTime().plusMinutes(1)).via!!
-        assertTrue(late.stayMinutes < 0)
-        assertNull(late.morningPct)
-        val unsupported = compare(62.0, target = 20.0)
+    @Test fun missingNightDataAndUnreachableRoutesRemainDistinct() {
+        val unsupported = compare(25.0, target = 20.0)
+        assertTrue(unsupported.direct.reachable)
         assertNull(unsupported.direct.morningPct)
-        assertNull(unsupported.via!!.morningPct)
-        // 주행만으로 예비 잔량을 밑도는 경우에는 야간 소모 자료 없이도 충전이 필요하다.
-        assertTrue(compare(25.0, target = 20.0).requiresCharge)
+        assertTrue(unsupported.requiresCharge)
+        assertNotNull(unsupported.viaArrivalPct)
         val stranded = compare(0.0)
         assertFalse(stranded.direct.reachable)
         assertNull(stranded.direct.morningPct)
-        assertNull(stranded.via)
+        assertNull(stranded.stop)
+        assertNull(stranded.viaArrivalPct)
     }
 
-    @Test fun directAndViaCheckOnlyTheirOwnHourlyWeather() {
-        val tripStart = departure.withHour(17).withMinute(35)
-        val weather = spot.copy(hourlyTemperaturesC = mapOf("18:00" to 5.0, "19:00" to 0.0))
-        val result = CampingEnergyPlanner.compareRoutes(62.0, start, weather, car, 5.1,
-            tripStart, LocalTime.of(20, 0), 22.0, true, mockChargingStations)!!
-        assertEquals(LocalTime.of(18, 45), result.direct.arrival.toLocalTime())
-        assertEquals(LocalTime.of(19, 0), result.via!!.arrival.toLocalTime())
-        assertNull(result.direct.morningPct)
-        assertNotNull(result.via.morningPct)
-    }
-
-    @Test fun chargeTargetIncludesKnownViaNightWhenDirectWeatherIsUnsupported() {
+    @Test fun laterSupportedWeatherDoesNotInfluenceTheChargingStop() {
         val tripStart = departure.withHour(17).withMinute(40)
         val weather = spot.copy(hourlyTemperaturesC = spot.hourlyTemperaturesC + ("18:00" to 5.0))
-        val result = CampingEnergyPlanner.compareRoutes(25.0, start, weather, car, 5.1, tripStart, null,
-            22.0, true, mockChargingStations)!!
+        val result = CampingEnergyPlanner.compareRoutes(25.0, start, weather, car, 5.1,
+            tripStart, null, 22.0, true, mockChargingStations)!!
+        assertEquals(LocalTime.of(18, 50), result.direct.arrival.toLocalTime())
         assertNull(result.direct.morningPct)
-        val via = result.via!!
-        assertNotNull(via.morningPct)
-        val stop = result.stop!!
-        val reserve = plan(100.0, null).requiredMorningPct
-        val lastLeg = CampingEnergyPlanner.roadKm(stop.station.location, weather.location)
-        val morningAtTarget = stop.targetPct!! - EnergyPredictor.consumptionPct(lastLeg, car, 5.1) - 5.8 / 72.6 * 100
-        assertTrue(morningAtTarget >= reserve)
-        assertTrue(via.morningPct!! >= reserve)
+        assertEquals(plan(25.0, null).stop!!, result.stop)
+        assertNotNull(result.viaArrivalPct)
     }
 
     @Test fun wakeTimeAcrossMidnightChangesChargeDecision() {

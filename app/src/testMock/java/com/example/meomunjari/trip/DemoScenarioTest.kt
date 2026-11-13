@@ -21,7 +21,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -68,8 +71,14 @@ class DemoScenarioTest {
             night, mockChargingStations)!!.stop!!
         world.setBattery(25f)
         assertTrue(trip.navigateTo(spot))
+        val directKm = CampingEnergyPlanner.roadKm(from, spot.location)
+        val direct = withTimeout(2_000) { trip.route.filterNotNull().first() }
+        assertEquals(CampingEnergyPlanner.drivingMinutes(directKm), direct.remainingMin)
         assertTrue(trip.navigateTo(spot, stop))
         assertEquals(spot.id, world.destination.value?.spotId)
+        val detour = withTimeout(2_000) { trip.route.filterNotNull().first { it.remainingMin == null } }
+        val finalLegKm = CampingEnergyPlanner.roadKm(stop.station.location, spot.location)
+        assertEquals(CampingEnergyPlanner.roadKm(from, stop.station.location) + finalLegKm, detour.remainingKm, 0.001)
         world.setAutoDrive(true)
         var ticks = 0
         while (world.chargingStop.value != null && ticks++ < 100) world.tick(1_000)
@@ -93,6 +102,10 @@ class DemoScenarioTest {
         assertEquals(stop.station.location, world.location.value)
         trip.leaveChargingStop()
         assertNull(world.arrivedStop.value)
+        val finalLeg = withTimeout(2_000) {
+            trip.route.filterNotNull().first { it.remainingMin != null && it.remainingKm == finalLegKm }
+        }
+        assertEquals(CampingEnergyPlanner.drivingMinutes(finalLegKm), finalLeg.remainingMin)
         repeat(40) { world.tick(1_000) }
         assertTrue(Geo.distanceM(world.location.value!!, spot.location) < spot.radiusM)
         assertTrue(trip.navigateTo(spot, stop))
