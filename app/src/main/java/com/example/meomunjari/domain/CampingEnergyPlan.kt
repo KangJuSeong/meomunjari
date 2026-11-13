@@ -34,10 +34,13 @@ object CampingEnergyPlanner {
     fun estimateNight(
         temperatures: List<Double>, records: List<MeasurementReport>, elapsedHours: Double = 0.0,
         hvacNow: Boolean? = null, protectionTriggered: Boolean = false,
+        stayMinutes: Int = WakeSchedule.DEFAULT_MINUTES,
     ): NightEstimate? {
-        val hours = EnergyPredictor.DEFAULT_STAY_HOURS.toInt()
+        if (stayMinutes !in 1..1440 || !elapsedHours.isFinite()) return null
+        val duration = stayMinutes / 60.0
+        val hours = ceil(duration).toInt()
         if (records.size < 2 || temperatures.size < hours || temperatures.take(hours).any { !it.isFinite() }) return null
-        val elapsed = elapsedHours.coerceIn(0.0, hours.toDouble())
+        val elapsed = elapsedHours.coerceIn(0.0, duration)
         val offRecords = records.filter { it.hvacHours == 0.0 }
         val idleRate = if (offRecords.isEmpty()) IDLE_PCT_PER_HOUR
             else offRecords.sumOf { it.energyUsedPct } / offRecords.sumOf { it.durationHours }
@@ -48,12 +51,12 @@ object CampingEnergyPlanner {
         }
         var heat = 0.0
         for (hour in 0 until hours) {
-            val remaining = (hour + 1 - elapsed).coerceIn(0.0, 1.0)
+            val remaining = (minOf(hour + 1.0, duration) - maxOf(hour.toDouble(), elapsed)).coerceAtLeast(0.0)
             val heating = if (hour == elapsed.toInt() && hvacNow != null) hvacNow
                 else temperatures[hour] < HEATING_THRESHOLD_C
             if (heating && !protectionTriggered) heat += remaining
         }
-        return NightEstimate(heat * onRate + (hours - elapsed - heat) * idleRate, heat, records.size)
+        return NightEstimate(heat * onRate + (duration - elapsed - heat) * idleRate, heat, records.size)
     }
 
     fun plan(

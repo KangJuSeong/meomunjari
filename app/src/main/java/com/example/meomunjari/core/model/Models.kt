@@ -88,6 +88,8 @@ data class BatteryComparison(
     val predictedMorningPct: Double?,
     val endPct: Double?,
     val stayMinutes: Long,
+    val plannedMinutes: Int = 480,
+    val plannedWakeTime: String? = null,
 )
 
 @Serializable

@@ -69,6 +69,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.example.meomunjari.domain.WakeSchedule
+import com.example.meomunjari.trip.RouteProgress
+import com.example.meomunjari.ui.components.WakeTimeButton
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
+import java.time.LocalTime
 import java.time.LocalDate
 
 data class SpotDetailUi(
@@ -80,6 +86,7 @@ data class SpotDetailUi(
     val forecast: EnergyForecast? = null,
     val evPlan: CampingEnergyPlan? = null,
     val evRecords: Int = 0,
+    val plannedMinutes: Int = WakeSchedule.DEFAULT_MINUTES,
     val master: SettingPreset? = null,
     val distanceM: Double? = null,
     val user: UserData? = null,
@@ -94,13 +101,24 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
         Base(spots.firstOrNull { it.id == spotId }, spots, reviews, reports, presets, user)
     }
 
-    val ui: StateFlow<SpotDetailUi> = combine(base, c.trip.vehicle, c.trip.location, month, c.trip.destination) { b, vehicle, loc, m, dest ->
+    private val localMinute = flow {
+        while (true) {
+            val now = LocalTime.now()
+            emit(now)
+            delay((60 - now.second) * 1000L)
+        }
+    }
+    private val schedule = combine(month, c.trip.wakeTime, localMinute) { m, wake, now -> Triple(m, wake, now) }
+
+    val ui: StateFlow<SpotDetailUi> = combine(base, c.trip.vehicle, c.trip.location, schedule, c.trip.destination) { b, vehicle, loc, (m, wake, now), dest ->
         val spot = b.spot ?: return@combine SpotDetailUi()
         val summary = ReportAggregator.summarize(b.reports, spot.id, m, b.user.car.powerType)
         val distance = loc?.let { Geo.distanceM(it, spot.location) }
         val isEv = b.user.car.powerType == PowerType.EV
         val records = CampingEnergyPlanner.matchingReports(b.reports, spot, LocalDate.now().monthValue)
-        val night = CampingEnergyPlanner.estimateNight(spot.overnightTemperaturesC, records)
+        val travelMinutes = loc?.let { RouteProgress.estimate(it, spot).remainingMin } ?: 0
+        val plannedMinutes = WakeSchedule.stayMinutes(now.plusMinutes(travelMinutes.toLong()), wake)
+        val night = CampingEnergyPlanner.estimateNight(spot.overnightTemperaturesC, records, stayMinutes = plannedMinutes)
         val evPlan = if (isEv && loc != null && vehicle.batteryPct != null) {
             CampingEnergyPlanner.plan(vehicle.batteryPct.toDouble(), loc, spot, b.user.car,
                 vehicle.efficiencyKmPerKWh?.toDouble(), night, mockChargingStations)
@@ -125,6 +143,7 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
             forecast = forecast,
             evPlan = evPlan,
             evRecords = records.size,
+            plannedMinutes = plannedMinutes,
             master = SettingCompatibility.master(b.presets.filter { it.spotId == spot.id }, b.user.nickname),
             distanceM = distance,
             user = b.user,
@@ -152,6 +171,7 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
     val container = LocalAppContainer.current
     val vm: SpotDetailViewModel = viewModel(key = "spot-$spotId") { SpotDetailViewModel(container, spotId) }
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val wake by container.trip.wakeTime.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var message by remember { mutableStateOf<String?>(null) }
 
@@ -258,13 +278,14 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
                 SpotPhoto(spot.photoColors, height = 180.dp)
                 SectionCard(title = "내 차로 하룻밤 괜찮을까요?") {
                     if (ui.user?.car?.powerType == PowerType.EV) {
+                        WakeTimeButton(wake, container.trip::selectWakeTime)
                         val plan = ui.evPlan
                         if (plan == null) Text("현재 위치와 차량 배터리를 확인하고 있어요")
                         else {
                             Text("직행 시 도착 잔량 ${plan.arrivalPct.roundToInt()}%")
                             if (plan.night != null && plan.morningPct != null) {
                                 Text("아침 예상 잔량 ${plan.morningPct.roundToInt()}%", style = MaterialTheme.typography.titleLarge)
-                                Text("도착 후 8시간 · 목업 기온 기준 난방 ${plan.night.heatingHours.roundToInt()}시간 · 총 소모 ${plan.night.drainPct.roundToInt()}%p")
+                                Text("도착 후 ${ui.plannedMinutes / 60}시간 ${ui.plannedMinutes % 60}분 · 목업 기온 기준 난방 ${plan.night.heatingHours.roundToInt()}시간 · 총 소모 ${plan.night.drainPct.roundToInt()}%p")
                                 Text("이번 달 EV 기록 ${ui.evRecords}건" + if (ui.evRecords == 2) " · 참고치" else "")
                             } else if (ui.evRecords < 2) Text("측정중 · 이번 달 EV 기록 ${ui.evRecords}/2건")
                             else Text("야간 기온 자료를 기다리고 있어요")
