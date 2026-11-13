@@ -4,7 +4,7 @@ import com.example.meomunjari.core.model.Amenities
 import com.example.meomunjari.core.model.CarProfile
 import com.example.meomunjari.core.model.MeasurementReport
 import com.example.meomunjari.core.model.PowerType
-import com.example.meomunjari.core.model.RestrictedZone
+import com.example.meomunjari.data.mock.WaterProtectionZones
 import com.example.meomunjari.core.model.Review
 import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.model.Spot
@@ -47,7 +47,7 @@ object Fixtures {
         presets = read("presets.json").jsonArray.map { preset(it.jsonObject) },
         user = user(read("user.json").jsonObject),
         tags = tags(read("tags.json").jsonObject),
-        zones = read("restricted_zones.json").jsonArray.map { zone(it.jsonObject) },
+        zones = WaterProtectionZones.read(dir.resolve(WaterProtectionZones.ASSET).readText()),
     )
 
     private fun JsonObject.s(k: String) = this[k]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
@@ -114,5 +114,4 @@ object Fixtures {
         seasonal = o["seasonal"]!!.jsonObject.mapValues { e -> e.value.jsonArray.map { it.jsonPrimitive.content } },
     )
 
-    private fun zone(o: JsonObject) = RestrictedZone(o.s("name")!!, o.d("lat")!!, o.d("lng")!!, o.i("radiusM")!!, o.s("reason")!!)
 }

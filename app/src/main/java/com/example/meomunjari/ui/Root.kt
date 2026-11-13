@@ -92,12 +92,14 @@ fun MeomunjariRoot(container: AppContainer) {
         val driveState by trip.driveState.collectAsStateWithLifecycle()
         val certified by trip.certifiedVisit.collectAsStateWithLifecycle()
         var consoleOpen by rememberSaveable { mutableStateOf(false) }
+        var registeredVisitId by rememberSaveable { mutableStateOf<String?>(null) }
 
         // 도착 인증이 되면 차박 모드 화면으로 안내한다.
         LaunchedEffect(certified?.id) {
             // 리뷰를 쓰는 중이면 화면을 빼앗지 않는다.
             val onReview = nav.currentDestination?.route == Routes.REVIEW
-            if (certified != null && trip.camping.value == null && !onReview) {
+            val visit = certified
+            if (visit != null && visit.id != registeredVisitId && trip.camping.value == null && !onReview) {
                 nav.navigate(Routes.ARRIVAL) { launchSingleTop = true }
             }
         }
@@ -129,6 +131,7 @@ fun MeomunjariRoot(container: AppContainer) {
                         SpotDetailScreen(
                             spotId = entry.arguments?.getString("id").orEmpty(),
                             onBack = { nav.popBackStack() },
+                            onTag = { nav.navigate(Routes.search(listOf(it))) },
                         )
                     }
                     composable(Routes.ARRIVAL) {
@@ -157,6 +160,8 @@ fun MeomunjariRoot(container: AppContainer) {
                         RegisterScreen(
                             onBack = { nav.popBackStack() },
                             onRegistered = { id ->
+                                // 직접 등록한 현재 위치는 이미 방문 인증이 끝났으므로 상세에 머문다.
+                                registeredVisitId = trip.certifiedVisit.value?.takeIf { it.spotId == id }?.id
                                 nav.navigate(Routes.spot(id)) { popUpTo(Routes.HOME) }
                             },
                         )

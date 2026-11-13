@@ -1,6 +1,7 @@
 package com.example.meomunjari.data.mock
 
 import com.example.meomunjari.core.model.MeasurementReport
+import com.example.meomunjari.core.model.RestrictedPlaceReport
 import com.example.meomunjari.core.model.RestrictedZone
 import com.example.meomunjari.core.model.Review
 import com.example.meomunjari.core.model.SettingPreset
@@ -35,12 +36,14 @@ data class MockSeed(
 
 fun MockSeed.toRepositories(): Repositories {
     val ref = MockReferenceRepository(tags, zones)
+    val publishedLoads = presets.filter { it.ownerNickname == user.nickname }.sumOf { it.loadCount }
+    val member = MockUserRepository(user.copy(presetLoadsReceived = maxOf(user.presetLoadsReceived, publishedLoads)))
     return Repositories(
         spots = MockSpotRepository(spots),
         reviews = MockReviewRepository(reviews),
         reports = MockReportRepository(reports),
-        presets = MockPresetRepository(presets),
-        user = MockUserRepository(user),
+        presets = MockPresetRepository(presets, member),
+        user = member,
         reference = ref,
     )
 }
@@ -48,8 +51,19 @@ fun MockSeed.toRepositories(): Repositories {
 class MockSpotRepository(seed: List<Spot>) : SpotRepository {
     private val state = MutableStateFlow(seed)
     override val spots: StateFlow<List<Spot>> = state.asStateFlow()
+    private val reports = MutableStateFlow(emptyList<RestrictedPlaceReport>())
+    override val restrictedPlaceReports = reports.asStateFlow()
 
     override fun get(id: String): Spot? = state.value.firstOrNull { it.id == id }
+
+    @Synchronized
+    override fun reportRestrictedPlace(report: RestrictedPlaceReport): RestrictedPlaceReport? {
+        if (get(report.spotId) == null) return null
+        val existing = reports.value.firstOrNull { it.spotId == report.spotId && it.reporter == report.reporter }
+        if (existing != null) return existing
+        reports.value = reports.value + report
+        return report
+    }
 
     override fun register(spot: Spot) {
         state.update { list -> list.filterNot { it.id == spot.id } + spot }
@@ -104,15 +118,23 @@ class MockReportRepository(seed: List<MeasurementReport>) : ReportRepository {
     }
 }
 
-class MockPresetRepository(seed: List<SettingPreset>) : PresetRepository {
+class MockPresetRepository(seed: List<SettingPreset>, private val member: UserRepository) : PresetRepository {
     private val state = MutableStateFlow(seed)
+    private val loads = mutableSetOf<Triple<String, String, String>>()
     override val presets: StateFlow<List<SettingPreset>> = state.asStateFlow()
     override fun forSpot(spotId: String): List<SettingPreset> = state.value.filter { it.spotId == spotId }
 
-    override fun recordLoad(presetId: String) = state.update { list ->
-        list.map { if (it.id == presetId) it.copy(loadCount = it.loadCount + 1) else it }
+    @Synchronized
+    override fun recordLoad(presetId: String, visitor: String, visitId: String) {
+        val preset = state.value.firstOrNull { it.id == presetId } ?: return
+        if (preset.ownerNickname == visitor || !loads.add(Triple(presetId, visitor, visitId))) return
+        state.value = state.value.map { if (it.id == presetId) it.copy(loadCount = it.loadCount + 1) else it }
+        if (preset.ownerNickname == member.user.value.nickname) {
+            member.update { it.copy(presetLoadsReceived = it.presetLoadsReceived + 1) }
+        }
     }
 
+    @Synchronized
     override fun publish(preset: SettingPreset) = state.update { list -> list.filterNot { it.id == preset.id } + preset }
 }
 
