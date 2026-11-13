@@ -52,11 +52,11 @@ fun DrivingScreen() {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(22.dp)) {
             Pill("주행 중", MColors.Blue)
             Text(destination?.name ?: "목적지 없이 주행 중", fontSize = 50.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.5).sp)
-            via?.let { Text("${it.station.name} 경유 · 충전 약 ${it.minutes}분") }
+            via?.let { Text("${it.station.name}까지 이동 시간 미확인 · 정차 후 계획 충전 시간 ${it.minutes}분") }
             route?.let { r ->
                 Row(horizontalArrangement = Arrangement.spacedBy(56.dp), modifier = Modifier.padding(vertical = 8.dp)) {
                     BigNumber("남은 거리", "${(r.remainingKm * 10).roundToInt() / 10.0}km")
-                    BigNumber("남은 시간", "${r.remainingMin}분")
+                    if (via == null) r.remainingMin?.let { BigNumber("예상 주행 시간", "약 ${it}분") }
                     vehicle.energyPct?.takeIf { via == null }?.let { pct ->
                         val arrive = pct - EnergyPredictor.consumptionPct(r.remainingKm, user.car, vehicle.efficiencyKmPerKWh?.toDouble())
                         BigNumber("도착하면", "${arrive.roundToInt().coerceAtLeast(0)}%", MColors.Blue)

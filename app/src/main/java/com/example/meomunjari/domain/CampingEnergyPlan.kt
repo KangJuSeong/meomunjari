@@ -34,7 +34,7 @@ data class RouteEstimate(
 data class DepartureComparison(
     val departure: LocalDateTime,
     val direct: RouteEstimate,
-    val via: RouteEstimate?,
+    val viaArrivalPct: Double?,
     val stop: ChargingStop?,
     val requiresCharge: Boolean,
 )
@@ -124,6 +124,7 @@ object CampingEnergyPlanner {
         val directArrival = start.plusMinutes(drivingMinutes(directKm).toLong())
         val directStay = WakeSchedule.stayMinutes(directArrival.toLocalTime(), wake)
         val directNight = estimateNight(spot, directArrival.toLocalTime(), car, targetTempC, heatingEnabled, stayMinutes = directStay)
+        // 충전 계획은 직행 시의 체류·난방 조건을 기준으로 잡는다.
         val plan = plan(nowPct, from, spot, car, efficiency, directNight, stations, includeOptionalStop = true) ?: return null
 
         val eff = efficiency?.takeIf { it.isFinite() && it > 0 } ?: car.efficiencyKmPerKWh
@@ -131,33 +132,12 @@ object CampingEnergyPlanner {
         val reachable = nowPct >= cost(directKm)
         val direct = RouteEstimate(directArrival, plan.arrivalPct, reachable, directStay,
             plan.morningPct.takeIf { reachable })
-        fun viaRoute(stop: ChargingStop): RouteEstimate {
-            val first = roadKm(from, stop.station.location)
-            val last = roadKm(stop.station.location, spot.location)
-            val arrival = start.plusMinutes(drivingMinutes(first + last).toLong() + stop.minutes)
-            val charged = min(100.0, nowPct - cost(first) + stop.minutes * EnergyPredictor.FAST_CHARGE_PCT_PER_MIN)
-            val arrivalPct = charged - cost(last)
-            // 명시한 기상 시각은 두 경로에 같은 날짜로 고정한다.
-            val stay = if (wake == null) WakeSchedule.DEFAULT_MINUTES
-                else ChronoUnit.MINUTES.between(arrival, directArrival.plusMinutes(directStay.toLong())).toInt()
-            val morning = when {
-                stay < 0 -> null
-                stay == 0 -> arrivalPct
-                else -> estimateNight(spot, arrival.toLocalTime(), car, targetTempC, heatingEnabled, stayMinutes = stay)
-                    ?.let { (arrivalPct - it.drainPct).coerceAtLeast(0.0) }
-            }
-            return RouteEstimate(arrival, arrivalPct, true, stay, morning)
+        val viaArrivalPct = plan.stop?.let { stop ->
+            val atStation = nowPct - cost(roadKm(from, stop.station.location))
+            val afterCharge = min(100.0, atStation + stop.minutes * EnergyPredictor.FAST_CHARGE_PCT_PER_MIN)
+            afterCharge - cost(roadKm(stop.station.location, spot.location))
         }
-
-        val originalStop = plan.stop ?: return DepartureComparison(start, direct, null, null, plan.requiresCharge)
-        val via = viaRoute(originalStop)
-        if (plan.requiresCharge && directNight == null && via.morningPct != null && via.stayMinutes > 0) {
-            // 늦게 도착하면 지원 조건에 들어올 수 있다. 조기 출발 기준도 경유지의 야간 소모를 포함하도록 갱신한다.
-            val viaNight = estimateNight(spot, via.arrival.toLocalTime(), car, targetTempC, heatingEnabled, stayMinutes = via.stayMinutes)
-            val adjusted = plan(nowPct, from, spot, car, efficiency, viaNight, listOf(originalStop.station))?.stop
-            if (adjusted != null) return DepartureComparison(start, direct, viaRoute(adjusted), adjusted, true)
-        }
-        return DepartureComparison(start, direct, via, originalStop, plan.requiresCharge)
+        return DepartureComparison(start, direct, viaArrivalPct, plan.stop, plan.requiresCharge)
     }
 
     fun roadKm(from: LatLng, to: LatLng) = Geo.distanceM(from, to) * Geo.ROAD_FACTOR / 1000
