@@ -2,7 +2,6 @@ package com.example.meomunjari.data.mock
 
 import android.content.Context
 import com.example.meomunjari.core.model.MeasurementReport
-import com.example.meomunjari.core.model.RestrictedZone
 import com.example.meomunjari.core.model.Review
 import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.model.Spot
@@ -24,7 +23,7 @@ object MockAssetLoader {
         presets = json.decodeFromString<List<SettingPreset>>(read(context, "presets.json")),
         user = json.decodeFromString<UserData>(read(context, "user.json")),
         tags = json.decodeFromString<TagDictionary>(read(context, "tags.json")),
-        zones = json.decodeFromString<List<RestrictedZone>>(read(context, "restricted_zones.json")),
+        zones = WaterProtectionZones.read(read(context, WaterProtectionZones.ASSET)),
     )
 
     private fun read(context: Context, name: String): String =

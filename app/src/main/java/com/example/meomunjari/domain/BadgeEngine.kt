@@ -65,7 +65,7 @@ object BadgeEngine {
 
         val othersVisited = visitedSpots.count { it.registeredBy != user.nickname }
         val seasons = user.visits.map { ReportAggregator.season(it.month) }.distinct()
-        val regionBest = visitedSpots.groupBy { it.region }.maxByOrNull { it.value.size }
+        val regionBest = visitedSpots.filter { it.region.isNotBlank() }.groupBy { it.region }.maxByOrNull { it.value.size }
         // 가장 많이 다녀온 테마. 같으면 그 스팟들에 더 많이 붙은(대표성 높은) 태그.
         val themeBest = visitedSpots
             .flatMap { spot -> spot.tags.map { Triple(it.tag, spot.id, it.count) } }

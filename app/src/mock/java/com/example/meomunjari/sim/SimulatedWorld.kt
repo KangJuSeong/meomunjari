@@ -2,6 +2,7 @@ package com.example.meomunjari.sim
 
 import com.example.meomunjari.core.Geo
 import com.example.meomunjari.core.LocationPreset
+import com.example.meomunjari.core.RegistrationPlace
 import com.example.meomunjari.core.VirtualConsole
 import com.example.meomunjari.core.location.LocationGateway
 import com.example.meomunjari.core.model.LatLng
@@ -245,10 +246,10 @@ class SimulatedWorld(
     // ---------- VirtualConsole ----------
 
     override fun locationPresets(): List<LocationPreset> = buildList {
-        add(LocationPreset("속초 시내 (출발지)", HOME))
+        add(LocationPreset("속초 시내 (출발지)", HOME, RegistrationPlace("속초 출발지", "강원도")))
         spotsProvider().forEach { add(LocationPreset("${it.name} 입구", Geo.offsetNorth(it.location, 60.0))) }
-        add(LocationPreset("고성 봉포 해변 공터 (미등록)", LatLng(38.2482, 128.5668)))
-        add(LocationPreset("속초해수욕장 (야영 금지)", LatLng(38.1905, 128.6005)))
+        add(LocationPreset("고성 봉포 해변 공터 (미등록)", LatLng(38.2482, 128.5668), RegistrationPlace("고성 봉포 공터", "강원도")))
+        add(LocationPreset("경기 광주 상수원보호구역", LatLng(37.48634563, 127.31812732), RegistrationPlace("광주 보호구역", "경기도")))
     }
 
     override fun setLocation(location: LatLng) {

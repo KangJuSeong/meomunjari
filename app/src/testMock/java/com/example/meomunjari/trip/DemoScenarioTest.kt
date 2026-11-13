@@ -3,7 +3,10 @@ package com.example.meomunjari.trip
 import com.example.meomunjari.Fixtures
 import com.example.meomunjari.core.Gateways
 import com.example.meomunjari.core.Geo
+import com.example.meomunjari.core.model.Amenities
+import com.example.meomunjari.core.model.LatLng
 import com.example.meomunjari.core.model.SettingPreset
+import com.example.meomunjari.core.model.VehicleClass
 import com.example.meomunjari.domain.CampingEnergyPlanner
 import com.example.meomunjari.data.mock.mockChargingStations
 import com.example.meomunjari.core.vehicle.ApplyStatus
@@ -11,9 +14,12 @@ import com.example.meomunjari.core.vehicle.ControlItem
 import com.example.meomunjari.core.vehicle.Gear
 import com.example.meomunjari.data.mock.toRepositories
 import com.example.meomunjari.domain.BadgeType
+import com.example.meomunjari.domain.Grade
 import com.example.meomunjari.domain.DriveGuard
 import com.example.meomunjari.domain.DriveState
 import com.example.meomunjari.domain.SettingCompatibility
+import com.example.meomunjari.domain.SpotQuery
+import com.example.meomunjari.domain.SpotSearch
 import com.example.meomunjari.domain.TagNormalizer
 import com.example.meomunjari.sim.SimulatedWorld
 import kotlinx.coroutines.CoroutineScope
@@ -56,6 +62,24 @@ class DemoScenarioTest {
 
     @After
     fun tearDown() = scope.cancel()
+
+    @Test
+    fun restrictedPlaceReportIsRecordedOncePerReporterAndSpot() {
+        val spot = repos.spots.get("s-003")!!
+        val status = trip.status()
+        assertNull(trip.reportRestrictedPlace("missing", "안내판"))
+        val first = requireNotNull(trip.reportRestrictedPlace(spot.id, "  야영 금지 안내판  "))
+        assertEquals("야영 금지 안내판", first.note)
+        assertEquals(repos.user.user.value.nickname, first.reporter)
+        assertEquals("2026-11-03", first.createdAt)
+        assertEquals(first, trip.reportRestrictedPlace(spot.id, "같은 장소"))
+        assertEquals(listOf(first), repos.spots.restrictedPlaceReports.value)
+        assertEquals(spot, repos.spots.get(spot.id))
+        assertEquals(status, trip.status())
+        repos.user.update { it.copy(nickname = "다른 방문자") }
+        val second = requireNotNull(trip.reportRestrictedPlace(spot.id, ""))
+        assertEquals(listOf(first, second), repos.spots.restrictedPlaceReports.value)
+    }
 
     @Test
     fun chargeWaypointRetainsFinalCampsite() = runBlocking {
@@ -217,6 +241,13 @@ class DemoScenarioTest {
         assertEquals(1, repos.reviews.forSpot("s-003").count { it.author == "주성" })
         assertTrue(repos.presets.forSpot("s-003").any { it.ownerNickname == "주성" })
 
+        val presetsAfterReview = repos.presets.presets.value
+        assertEquals(reviewed, trip.submitReview(1, "다시 눌렀어요", listOf("#일출"), sharePreset = true))
+        assertEquals(updatedSpot, repos.spots.get("s-003"))
+        assertEquals(presetsAfterReview, repos.presets.presets.value)
+        assertEquals(1, repos.reviews.forSpot("s-003").count { it.author == "주성" })
+        assertEquals(reviewed.after, trip.status())
+
         // 떠났다가 다시 오면 새 방문으로 인증된다.
         world.setLocation(Geo.offsetNorth(spot.location, 2_500.0))
         trip.evaluateArrival()
@@ -308,19 +339,66 @@ class DemoScenarioTest {
     }
 
     @Test
+    fun firstRegistrationShowsPioneerAndGradePromotionOnce() = runBlocking {
+        repos.user.update { it.copy(registeredSpotIds = emptyList(), visits = emptyList(),
+            reportCount = 0, reportCredits = 0, reviewCount = 8) }
+        val before = trip.status()
+        assertEquals(40, before.points)
+        world.setGear(Gear.PARK)
+        world.setLocation(LatLng(38.2482, 128.5668))
+        val result = trip.registerSpot("해변 공터", "", Amenities(), listOf("#일출"), VehicleClass.MID)
+        assertTrue(result is RegisterResult.Registered)
+        val after = trip.status()
+        assertEquals(100, after.points)
+        assertEquals(Grade.CAMPER, after.grade)
+        assertTrue(after.badges.single { it.type == BadgeType.PIONEER }.earned)
+        assertTrue(trip.startCamping(repos.user.user.value.mySetting, false) is StartCampingResult.Started)
+        val finished = trip.endCamping()!!
+        assertEquals(before, finished.before)
+        assertEquals(after, finished.after)
+    }
+
+    @Test
     fun registerBlockedInRestrictedZoneAndAllowedElsewhere() {
         world.setGear(Gear.PARK)
-        world.setLocation(com.example.meomunjari.core.model.LatLng(38.1905, 128.6005))
-        val blocked = trip.registerSpot("해수욕장 앞", "", com.example.meomunjari.core.model.Amenities(), emptyList(), com.example.meomunjari.core.model.VehicleClass.LARGE)
+        val protectedLocation = world.locationPresets().single { it.label.contains("상수원보호구역") }.location
+        world.setLocation(protectedLocation)
+        assertNotNull(trip.restrictedZoneAt(protectedLocation))
+        val blocked = trip.registerSpot("보호구역 안", "", Amenities(), emptyList(), VehicleClass.LARGE)
         assertTrue(blocked is RegisterResult.Restricted)
 
-        world.setLocation(com.example.meomunjari.core.model.LatLng(38.2482, 128.5668))
+        world.setLocation(LatLng(38.2482, 128.5668))
         assertTrue(trip.isParkedAtUnknownPlace())
-        val ok = trip.registerSpot("봉포 해변 공터", "조용한 공터", com.example.meomunjari.core.model.Amenities(toilet = true), listOf("오션뷰"), com.example.meomunjari.core.model.VehicleClass.LARGE)
+        val ok = trip.registerSpot("봉포 해변 공터", "조용한 공터", Amenities(toilet = true),
+            listOf("#오션뷰", "#바다뷰 #해변공터, 일출맛집"), VehicleClass.LARGE, "강원도")
         assertTrue(ok is RegisterResult.Registered)
         val spot = (ok as RegisterResult.Registered).spot
-        assertEquals(listOf("#바다뷰"), spot.tags.map { it.tag })
+        assertEquals(listOf("#바다뷰", "#해변공터", "#일출맛집"), spot.tags.map { it.tag })
+        assertEquals("강원도", spot.region)
+        val hits = SpotSearch.search(repos.spots.spots.value, SpotQuery(tags = setOf("#바다뷰", "#해변공터")),
+            world.location.value, VehicleClass.LARGE)
+        assertEquals(listOf(spot.id), hits.map { it.spot.id })
         assertTrue(trip.status().badges.first { it.type == BadgeType.PIONEER }.current == 2)
         assertNotNull(trip.certifiedVisit.value)
+    }
+
+    @Test
+    fun rejectedRegistrationDoesNotCreateSpotsOrAwardActivity() {
+        world.setLocation(LatLng(38.2482, 128.5668))
+        fun register(name: String) = trip.registerSpot(name, "", Amenities(), emptyList(), VehicleClass.MID)
+        val initial = repos.user.user.value
+        val initialSpots = repos.spots.spots.value.size
+        assertEquals(RegisterResult.NameRequired, register("  "))
+        world.setGear(Gear.DRIVE)
+        assertEquals(RegisterResult.NotParked, register("새 스팟"))
+        assertEquals(initial, repos.user.user.value)
+        assertEquals(initialSpots, repos.spots.spots.value.size)
+        world.setGear(Gear.PARK)
+        val registered = register("새 스팟") as RegisterResult.Registered
+        assertEquals("", registered.spot.region)
+        val afterRegistration = repos.user.user.value
+        assertEquals(RegisterResult.Duplicate, register("다른 이름"))
+        assertEquals(afterRegistration, repos.user.user.value)
+        assertEquals(initialSpots + 1, repos.spots.spots.value.size)
     }
 }

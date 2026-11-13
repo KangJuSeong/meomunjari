@@ -1,6 +1,7 @@
 package com.example.meomunjari.data
 
 import com.example.meomunjari.core.model.MeasurementReport
+import com.example.meomunjari.core.model.RestrictedPlaceReport
 import com.example.meomunjari.core.model.RestrictedZone
 import com.example.meomunjari.core.model.Review
 import com.example.meomunjari.core.model.SettingPreset
@@ -17,7 +18,10 @@ import kotlinx.coroutines.flow.StateFlow
 
 interface SpotRepository {
     val spots: StateFlow<List<Spot>>
+    val restrictedPlaceReports: StateFlow<List<RestrictedPlaceReport>>
     fun get(id: String): Spot?
+    /** 한 사용자가 같은 장소를 다시 신고하면 처음 기록한 신고를 돌려준다. */
+    fun reportRestrictedPlace(report: RestrictedPlaceReport): RestrictedPlaceReport?
     fun register(spot: Spot)
     fun recordVisit(spotId: String, vehicleClass: VehicleClass, date: String)
     fun leave(spotId: String)
@@ -40,7 +44,8 @@ interface ReportRepository {
 interface PresetRepository {
     val presets: StateFlow<List<SettingPreset>>
     fun forSpot(spotId: String): List<SettingPreset>
-    fun recordLoad(presetId: String)
+    /** 같은 이용자가 같은 방문에서 세팅을 다시 적용해도 한 번만 집계한다. */
+    fun recordLoad(presetId: String, visitor: String, visitId: String)
     fun publish(preset: SettingPreset)
 }
 
