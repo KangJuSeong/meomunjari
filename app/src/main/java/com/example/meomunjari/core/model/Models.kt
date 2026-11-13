@@ -56,6 +56,7 @@ data class Spot(
     val typicalWeekendCampers: String = "",
     val nearestChargerKm: Double = 10.0,
     val photoColors: List<String> = emptyList(),
+    val overnightTemperaturesC: List<Double> = emptyList(),
 ) {
     val location: LatLng get() = LatLng(lat, lng)
 
@@ -96,7 +97,10 @@ data class MeasurementReport(
     val durationHours: Double,
     val rained: Boolean,
     val createdAt: String = "",
+    val hasEnergyReading: Boolean = true,
 ) {
+    val validEnergy: Boolean get() = hasEnergyReading && durationHours.isFinite() && durationHours > 0 &&
+        hvacHours in 0.0..durationHours && energyUsedPct in 0.0..100.0
     val drainPerHour: Double get() = if (durationHours > 0) energyUsedPct / durationHours else 0.0
 }
 

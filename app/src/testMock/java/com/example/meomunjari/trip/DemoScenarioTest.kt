@@ -3,6 +3,8 @@ package com.example.meomunjari.trip
 import com.example.meomunjari.Fixtures
 import com.example.meomunjari.core.Gateways
 import com.example.meomunjari.core.Geo
+import com.example.meomunjari.domain.CampingEnergyPlanner
+import com.example.meomunjari.data.mock.mockChargingStations
 import com.example.meomunjari.core.vehicle.ApplyStatus
 import com.example.meomunjari.core.vehicle.ControlItem
 import com.example.meomunjari.core.vehicle.Gear
@@ -46,6 +48,32 @@ class DemoScenarioTest {
 
     @After
     fun tearDown() = scope.cancel()
+
+    @Test
+    fun chargeWaypointRetainsFinalCampsite() = runBlocking {
+        val spot = repos.spots.get("s-003")!!
+        val records = CampingEnergyPlanner.matchingReports(repos.reports.reports.value, spot, 11)
+        val night = CampingEnergyPlanner.estimateNight(spot.overnightTemperaturesC, records)
+        val from = world.location.value!!
+        val stop = CampingEnergyPlanner.plan(25.0, from, spot, repos.user.user.value.car, 5.1,
+            night, mockChargingStations)!!.stop!!
+        world.setBattery(25f)
+        assertTrue(trip.navigateTo(spot))
+        assertTrue(trip.navigateTo(spot, stop))
+        assertEquals(spot.id, world.destination.value?.spotId)
+        world.setAutoDrive(true)
+        var ticks = 0
+        while (world.chargingStop.value != null && ticks++ < 100) world.tick(1_000)
+        assertEquals(stop.station.location, world.location.value)
+        assertEquals(spot.id, world.destination.value?.spotId)
+        assertTrue(world.snapshot.value.batteryPct!! > 25f)
+        repeat(40) { world.tick(1_000) }
+        assertTrue(Geo.distanceM(world.location.value!!, spot.location) < spot.radiusM)
+        assertTrue(trip.navigateTo(spot, stop))
+        trip.cancelRoute()
+        assertNull(world.chargingStop.value)
+        assertNull(world.destination.value)
+    }
 
     @Test
     fun fullDemoFlow() = runBlocking {

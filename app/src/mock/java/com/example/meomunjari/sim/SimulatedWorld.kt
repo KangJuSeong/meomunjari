@@ -8,6 +8,8 @@ import com.example.meomunjari.core.model.LatLng
 import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.model.Spot
 import com.example.meomunjari.core.navi.NaviDestination
+import com.example.meomunjari.core.navi.ChargingStop
+import com.example.meomunjari.domain.EnergyPredictor
 import com.example.meomunjari.core.navi.NaviGateway
 import com.example.meomunjari.core.vehicle.ApplyItemResult
 import com.example.meomunjari.core.vehicle.ApplyStatus
@@ -63,6 +65,9 @@ class SimulatedWorld(
     private val _destination = MutableStateFlow<NaviDestination?>(null)
     override val destination: StateFlow<NaviDestination?> = _destination.asStateFlow()
 
+    private val _chargingStop = MutableStateFlow<ChargingStop?>(null)
+    override val chargingStop = _chargingStop.asStateFlow()
+
     private val _outside = MutableStateFlow(7f)
     override val outsideTempC: StateFlow<Float> = _outside.asStateFlow()
 
@@ -115,27 +120,27 @@ class SimulatedWorld(
     private fun driveTowardDestination() {
         val dest = _destination.value ?: run { _autoDrive.value = false; return }
         val here = _location.value ?: return
-        // 스팟 중심에서 조금 떨어진 입구(반경 안)를 향해 곧장 달려 들어간다.
-        val stop = Geo.offsetNorth(dest.location, 40.0)
+        val via = _chargingStop.value
+        val stop = via?.station?.location ?: Geo.offsetNorth(dest.location, 40.0)
         val remaining = Geo.distanceM(here, stop)
         if (driveStepM <= 0) driveStepM = max(remaining / 12.0, 200.0)
-
-        if (remaining <= driveStepM) {
-            // 기어는 D 그대로 두어 시연에서 P로 바꾸게 한다.
-            _location.value = stop
-            _snapshot.update { it.copy(speedKmh = 0f) }
-            _autoDrive.value = false
-            driveStepM = 0.0
-            return
-        }
-        _location.value = Geo.interpolate(here, stop, driveStepM / remaining)
-        val usedPct = driveStepM / 1000.0 / (_snapshot.value.efficiencyKmPerKWh ?: 5f) / batteryKWh * 100.0
+        val step = minOf(driveStepM, remaining)
+        val arrived = step >= remaining
+        val usedPct = step * Geo.ROAD_FACTOR / 1000.0 / (_snapshot.value.efficiencyKmPerKWh ?: 5f) / batteryKWh * 100
+        // 가상 콘솔은 경유지 도착 시 계획한 충전 시간을 한 틱으로 압축한다.
+        val chargePct = if (arrived && via != null) via.minutes * EnergyPredictor.FAST_CHARGE_PCT_PER_MIN else 0.0
+        _location.value = if (arrived) stop else Geo.interpolate(here, stop, step / remaining)
         _snapshot.update {
             it.copy(
                 gear = Gear.DRIVE,
-                speedKmh = 62f,
-                batteryPct = ((it.batteryPct ?: 0f) - usedPct.toFloat()).coerceAtLeast(0f),
+                speedKmh = if (arrived) 0f else 62f,
+                batteryPct = ((it.batteryPct ?: 0f) - usedPct + chargePct).toFloat().coerceIn(0f, 100f),
             )
+        }
+        if (arrived) {
+            driveStepM = 0.0
+            _chargingStop.value = null
+            _autoDrive.value = via != null
         }
     }
 
@@ -176,14 +181,15 @@ class SimulatedWorld(
 
     // ---------- NaviGateway ----------
 
-    override suspend fun requestRoute(destination: NaviDestination): Boolean {
-        delay(200)
+    override suspend fun requestRoute(destination: NaviDestination, via: ChargingStop?): Boolean {
+        _chargingStop.value = via
         _destination.value = destination
         driveStepM = 0.0
         return true
     }
 
     override fun cancelRoute() {
+        _chargingStop.value = null
         _destination.value = null
         _autoDrive.value = false
     }

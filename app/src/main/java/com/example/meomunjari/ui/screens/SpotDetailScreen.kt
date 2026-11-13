@@ -36,6 +36,10 @@ import com.example.meomunjari.core.model.UserData
 import com.example.meomunjari.di.AppContainer
 import com.example.meomunjari.domain.BadgeEngine
 import com.example.meomunjari.domain.EnergyForecast
+import com.example.meomunjari.core.model.PowerType
+import com.example.meomunjari.data.mock.mockChargingStations
+import com.example.meomunjari.domain.CampingEnergyPlan
+import com.example.meomunjari.domain.CampingEnergyPlanner
 import com.example.meomunjari.domain.EnergyPredictor
 import com.example.meomunjari.domain.Grade
 import com.example.meomunjari.domain.ReportAggregator
@@ -74,6 +78,8 @@ data class SpotDetailUi(
     val months: List<Int> = emptyList(),
     val summary: ReportSummary? = null,
     val forecast: EnergyForecast? = null,
+    val evPlan: CampingEnergyPlan? = null,
+    val evRecords: Int = 0,
     val master: SettingPreset? = null,
     val distanceM: Double? = null,
     val user: UserData? = null,
@@ -92,7 +98,14 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
         val spot = b.spot ?: return@combine SpotDetailUi()
         val summary = ReportAggregator.summarize(b.reports, spot.id, m, b.user.car.powerType)
         val distance = loc?.let { Geo.distanceM(it, spot.location) }
-        val forecast = vehicle.energyPct?.let { pct ->
+        val isEv = b.user.car.powerType == PowerType.EV
+        val records = CampingEnergyPlanner.matchingReports(b.reports, spot, LocalDate.now().monthValue)
+        val night = CampingEnergyPlanner.estimateNight(spot.overnightTemperaturesC, records)
+        val evPlan = if (isEv && loc != null && vehicle.batteryPct != null) {
+            CampingEnergyPlanner.plan(vehicle.batteryPct.toDouble(), loc, spot, b.user.car,
+                vehicle.efficiencyKmPerKWh?.toDouble(), night, mockChargingStations)
+        } else null
+        val forecast = vehicle.energyPct?.takeIf { !isEv && distance != null }?.let { pct ->
             EnergyPredictor.forecast(
                 nowPct = pct.toDouble(),
                 routeKm = (distance ?: 0.0) / 1000.0 * Geo.ROAD_FACTOR,
@@ -110,6 +123,8 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
             months = (ReportAggregator.monthsWithData(b.reports, spot.id) + LocalDate.now().monthValue).distinct().sorted(),
             summary = summary,
             forecast = forecast,
+            evPlan = evPlan,
+            evRecords = records.size,
             master = SettingCompatibility.master(b.presets.filter { it.spotId == spot.id }, b.user.nickname),
             distanceM = distance,
             user = b.user,
@@ -140,6 +155,8 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var message by remember { mutableStateOf<String?>(null) }
 
+    var sending by remember(spotId) { mutableStateOf(false) }
+    val activeStop by container.trip.chargingStop.collectAsStateWithLifecycle()
     val spot = ui.spot ?: run {
         EmptyState("스팟을 찾을 수 없어요", "목록에서 다시 골라 주세요.")
         return
@@ -240,19 +257,52 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
             ) {
                 SpotPhoto(spot.photoColors, height = 180.dp)
                 SectionCard(title = "내 차로 하룻밤 괜찮을까요?") {
-                    ui.forecast?.let { EnergyFlow(it) }
-                        ?: Text("차량 잔량을 읽는 중이에요", style = MaterialTheme.typography.bodyLarge, color = MColors.Grey500)
+                    if (ui.user?.car?.powerType == PowerType.EV) {
+                        val plan = ui.evPlan
+                        if (plan == null) Text("현재 위치와 차량 배터리를 확인하고 있어요")
+                        else {
+                            Text("직행 시 도착 잔량 ${plan.arrivalPct.roundToInt()}%")
+                            if (plan.night != null && plan.morningPct != null) {
+                                Text("아침 예상 잔량 ${plan.morningPct.roundToInt()}%", style = MaterialTheme.typography.titleLarge)
+                                Text("도착 후 8시간 · 목업 기온 기준 난방 ${plan.night.heatingHours.roundToInt()}시간 · 총 소모 ${plan.night.drainPct.roundToInt()}%p")
+                                Text("이번 달 EV 기록 ${ui.evRecords}건" + if (ui.evRecords == 2) " · 참고치" else "")
+                            } else if (ui.evRecords < 2) Text("측정중 · 이번 달 EV 기록 ${ui.evRecords}/2건")
+                            else Text("야간 기온 자료를 기다리고 있어요")
+                            if (plan.requiresCharge) {
+                                Text("충전 권고 · ${plan.stop?.let { "${it.station.name}에서 약 ${it.minutes}분 충전" } ?: "도달 가능한 경로상 목업 충전소가 없어요"}")
+                            } else if (plan.morningPct != null) Text("아침에 인근 충전소까지 이동할 여유가 있어요")
+                        }
+                    } else ui.forecast?.let { EnergyFlow(it) } ?: Text("위치와 차량 잔량을 확인하고 있어요")
+                }
+                val stop = ui.evPlan?.stop
+                if (stop != null) {
+                    val added = ui.isDestination && activeStop?.station == stop.station
+                    PrimaryButton(
+                        text = if (added) "충전소 경유 안내 중" else "충전소를 경유해 차박지로",
+                        enabled = !sending && !added,
+                        onClick = {
+                            sending = true
+                            scope.launch {
+                                try {
+                                    message = if (container.trip.navigateTo(spot, stop)) "충전소 경유 경로가 설정됐어요"
+                                        else "경유지를 설정하지 못했어요. 내비 연결을 확인하고 다시 시도해 주세요."
+                                } finally { sending = false }
+                            }
+                        }, modifier = Modifier.fillMaxWidth(),
+                    )
                 }
                 PrimaryButton(
-                    text = if (ui.isDestination) "안내 중이에요" else "여기로 갈래요",
-                    enabled = !ui.isDestination,
+                    text = if (ui.isDestination) "안내 중이에요" else "여기로 바로 갈래요",
+                    enabled = !ui.isDestination && !sending,
                     onClick = {
+                        sending = true
                         scope.launch {
-                            val ok = container.trip.navigateTo(spot)
-                            message = if (ok) "'${spot.name}'(으)로 길안내를 시작했어요" else "내비 목적지를 설정하지 못했어요"
+                            try {
+                                message = if (container.trip.navigateTo(spot)) "'${spot.name}'(으)로 길안내를 시작했어요"
+                                    else "내비 목적지를 설정하지 못했어요"
+                            } finally { sending = false }
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
+                    }, modifier = Modifier.fillMaxWidth(),
                 )
                 SecondaryButton(
                     "금지 장소 신고",
