@@ -1,6 +1,7 @@
 package com.example.meomunjari.pleos
 
 import ai.pleos.playground.navi.constants.NaviErrorCode
+import ai.pleos.playground.navi.constants.NavigationStatus
 import ai.pleos.playground.navi.data.RouteInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
@@ -47,7 +48,11 @@ class PleosNaviGatewayTest {
         assertEquals(camp, gateway.destination.value)
         assertTrue(gateway.requestRoute(camp))
         verify(sdk, times(1)).requestRoute(any())
+        // onRouteEnded는 '경로 탐색 완료'라 안내 중인 목적지를 지우지 않는다.
         listener.onRouteEnded()
+        assertEquals(camp, gateway.destination.value)
+        // 내비가 경로 없이 주행하면(FREE_DRIVE) 안내가 끝난 것이다.
+        listener.onNavigationStatus(NavigationStatus.FREE_DRIVE)
         assertNull(gateway.destination.value)
     }
 
@@ -63,12 +68,36 @@ class PleosNaviGatewayTest {
     }
 
     @Test
-    fun sdkCancellationStopsPendingRequest() = runBlocking {
+    fun previousRouteCancellationDuringRequestIsIgnored() = runBlocking {
         val listener = connect()
         val request = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp) }
+        // 새 경로를 요청하면 내비가 먼저 기존 경로를 취소한다.
         listener.onRouteCancelled()
         listener.onRoutingCompleted()
-        assertFalse(request.await())
+        assertTrue(request.await())
+        assertEquals(camp, gateway.destination.value)
+    }
+
+    @Test
+    fun emulatorEventOrderConfirmsRoute() = runBlocking {
+        val listener = connect()
+        val request = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp) }
+        // Pleos 에뮬레이터에서 실제로 본 순서 (onRoutingCompleted는 오지 않음)
+        listener.onRouteCancelled()
+        listener.onNavigationStatus(NavigationStatus.FREE_DRIVE)
+        listener.onRouteEnded()
+        listener.onNavigationStatus(NavigationStatus.ROUTE_DRIVE)
+        assertTrue(request.await())
+        assertEquals(camp, gateway.destination.value)
+    }
+
+    @Test
+    fun sdkCancellationWithoutPendingRequestEndsGuidance() = runBlocking {
+        val listener = connect()
+        val request = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp) }
+        listener.onRoutingCompleted()
+        assertTrue(request.await())
+        listener.onRouteCancelled()
         assertNull(gateway.destination.value)
     }
 
