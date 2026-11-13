@@ -79,7 +79,7 @@ class PleosVehicleGateway(
         car.connect()
         pollJob = scope.launch {
             while (isActive) {
-                _snapshot.update { it.copy(gear = car.gear(), speedKmh = car.speedKmh(), chargeState = car.chargeState()) }
+                _snapshot.update { it.copy(gear = car.gear(), speedKmh = car.speedKmh(), chargeState = car.chargeState(), outsideTempC = car.outsideTempC()) }
                 delay(1_000)
             }
         }

@@ -98,7 +98,10 @@ class MockReportRepository(seed: List<MeasurementReport>) : ReportRepository {
     private val state = MutableStateFlow(seed)
     override val reports: StateFlow<List<MeasurementReport>> = state.asStateFlow()
     override fun forSpot(spotId: String): List<MeasurementReport> = state.value.filter { it.spotId == spotId }
-    override fun add(report: MeasurementReport) = state.update { it + report }
+    /** 한 스팟에 사용자당 리포트 1개: 같은 작성자의 이전 리포트를 새 것으로 바꾼다. */
+    override fun add(report: MeasurementReport) = state.update { list ->
+        list.filterNot { it.spotId == report.spotId && report.author.isNotBlank() && it.author == report.author } + report
+    }
 }
 
 class MockPresetRepository(seed: List<SettingPreset>) : PresetRepository {

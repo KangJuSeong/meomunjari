@@ -22,6 +22,8 @@ data class VehicleSnapshot(
     val fuelPct: Float? = null,
     val efficiencyKmPerKWh: Float? = null,
     val cabinTempC: Float? = null,
+    /** 외기 온도. 차가 주지 않으면 null. */
+    val outsideTempC: Float? = null,
     val hvacOn: Boolean = false,
     val hvacTargetC: Float? = null,
     val wiperActive: Boolean = false,

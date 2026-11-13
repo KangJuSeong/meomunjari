@@ -155,7 +155,7 @@ class DemoScenarioTest {
         trip.setConsent(true)
         val master = SettingCompatibility.master(repos.presets.forSpot("s-003"), repos.user.user.value.nickname)!!
         world.setBattery(62f)
-        val started = trip.startCamping(master, includeDoor = false, loadedPresetId = master.id)
+        val started = trip.startCamping(master, includeDoor = false, loadedPresetId = master.id, devices = listOf("전기장판"))
         assertTrue(started is StartCampingResult.Started)
         val results = (started as StartCampingResult.Started).state.applyResults.associate { it.item to it.status }
         assertEquals(ApplyStatus.APPLIED, results[ControlItem.HVAC])
@@ -194,6 +194,12 @@ class DemoScenarioTest {
         assertTrue("공조 8시간이면 배터리가 10~20% 줄어야 한다: ${report.energyUsedPct}", report.energyUsedPct in 10.0..20.0)
         assertTrue(report.rained)
         assertTrue(report.minCabinTempC < 21.0)
+        // 외기 7°C에서 밤사이 내려간 최저·최고, 고른 외부 기기, 작성자
+        assertEquals(7.0, report.outsideMaxC!!, 0.6)
+        assertTrue("밤사이 외기가 내려가야 한다: ${report.outsideMinC}", report.outsideMinC!! < 5.0)
+        assertEquals(listOf("전기장판"), report.devices)
+        assertEquals("주성", report.author)
+        assertTrue(report.summaryLine().startsWith("11월 3일 · 외부 "))
         assertEquals(1, finished.creditsEarned)
         assertEquals(13, repos.reports.forSpot("s-003").count { it.month == 11 })
 

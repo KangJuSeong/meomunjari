@@ -6,7 +6,7 @@ import com.example.meomunjari.core.vehicle.ChargeState
 import com.example.meomunjari.core.vehicle.Gear
 
 /**
- * Vehicle SDK에 Gear 도메인이 없어 AAOS CarPropertyManager로 기어·속도를 읽는다.
+ * Vehicle SDK에 Gear 도메인·외기 온도가 없어 AAOS CarPropertyManager로 기어·속도·외기 온도를 읽는다.
  * android.car 라이브러리를 컴파일 의존성으로 두지 않기 위해 리플렉션으로 접근한다.
  * 읽지 못하면 null/UNKNOWN을 돌려주고, 앱은 '정지 상태'로 대신 판단한다(DriveGuard).
  */
@@ -46,6 +46,12 @@ internal class AaosCarProperties(private val context: Context) {
     /** m/s → km/h */
     fun speedKmh(): Float? = (read(PERF_VEHICLE_SPEED, java.lang.Float::class.java) as? Float)?.let { it * 3.6f }
 
+    /**
+     * 외기 온도(°C). Vehicle SDK에서 외기 온도 API를 찾지 못해 AAOS 표준 속성을 읽는다.
+     * Pleos 가이드상 SDK에 없는 속성을 직접 쓰려면 기술지원 검토가 필요하다. 못 읽으면 null.
+     */
+    fun outsideTempC(): Float? = read(ENV_OUTSIDE_TEMPERATURE, java.lang.Float::class.java) as? Float
+
     private fun read(propertyId: Int, type: Class<*>): Any? = runCatching {
         val m = manager ?: return null
         val getProperty = m.javaClass.getMethod(
@@ -72,6 +78,7 @@ internal class AaosCarProperties(private val context: Context) {
         const val GEAR_SELECTION = 289408000
         const val CURRENT_GEAR = 289408001
         const val PERF_VEHICLE_SPEED = 291504647
+        const val ENV_OUTSIDE_TEMPERATURE = 291505923
 
         // android.car.VehicleGear
         const val GEAR_NEUTRAL = 0x1

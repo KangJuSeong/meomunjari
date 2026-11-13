@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -36,6 +37,7 @@ import com.example.meomunjari.domain.DriveGuard
 import com.example.meomunjari.domain.PresetOption
 import com.example.meomunjari.domain.PresetSource
 import com.example.meomunjari.domain.SettingCompatibility
+import com.example.meomunjari.domain.camping.ExternalDevices
 import com.example.meomunjari.trip.StartCampingResult
 import com.example.meomunjari.core.model.PowerType
 import com.example.meomunjari.ui.components.WakeTimeButton
@@ -90,11 +92,17 @@ fun ArrivalScreen(onStarted: () -> Unit, onRegister: () -> Unit, onSunrise: () -
     var askDoor by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val devices = remember { mutableStateListOf<String>() }
 
     fun start(preset: SettingPreset, includeDoor: Boolean, source: PresetSource) {
         busy = true
         scope.launch {
-            val result = trip.startCamping(preset, includeDoor, loadedPresetId = preset.id.takeIf { source == PresetSource.MASTER })
+            val result = trip.startCamping(
+                preset,
+                includeDoor,
+                loadedPresetId = preset.id.takeIf { source == PresetSource.MASTER },
+                devices = devices.toList(),
+            )
             busy = false
             when (result) {
                 is StartCampingResult.Started -> onStarted()
@@ -169,6 +177,14 @@ fun ArrivalScreen(onStarted: () -> Unit, onRegister: () -> Unit, onSunrise: () -
                 Text("어떤 세팅으로 잘까요?", style = MaterialTheme.typography.titleLarge)
                 options.forEachIndexed { i, option ->
                     PresetCard(option, selected = i == selected, caps = caps, onClick = { selected = i })
+                }
+                SectionCard(title = "오늘 밤 쓸 외부 기기") {
+                    ChipFlow {
+                        ExternalDevices.ALL.forEach { d ->
+                            TagChip(d, selected = d in devices, onClick = { if (d in devices) devices.remove(d) else devices.add(d) })
+                        }
+                    }
+                    Text("실측 리포트에 함께 남아 다른 사람이 배터리 소모를 비교할 때 참고해요", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
                 }
                 PrimaryButton(
                     text = if (busy) "차에 적용하고 있어요…" else "🌙  차박 모드 시작하기",

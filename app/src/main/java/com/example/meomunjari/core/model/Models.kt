@@ -83,7 +83,10 @@ data class Review(
     val presetId: String? = null,
 )
 
-/** 차가 밤새 기록한 실측값 1회분. 개인 식별 정보는 담지 않는다. */
+/**
+ * 차가 밤새 기록한 실측 리포트 1회분.
+ * 한 스팟에 사용자당 1개만 두고, 다시 방문하면 최신 기록으로 바꾼다.
+ */
 @Serializable
 data class BatteryComparison(
     val predictedMorningPct: Double?,
@@ -101,18 +104,60 @@ data class MeasurementReport(
     val powerType: PowerType,
     val vehicleClass: VehicleClass,
     val minCabinTempC: Double,
+    /** 실내 온도(밤새 평균). */
     val avgCabinTempC: Double? = null,
     val hvacHours: Double,
+    /** 배터리(연료) 소모량 %. */
     val energyUsedPct: Double,
+    /** 차박 시간. */
     val durationHours: Double,
     val rained: Boolean,
+    /** 방문 일자 (yyyy-MM-dd). */
     val createdAt: String = "",
+    /** 작성자 닉네임. 스팟당 1개 규칙에 쓴다. */
+    val author: String = "",
+    /** 외부 최저·최고 온도. 차가 외기 온도를 주지 않으면 null. */
+    val outsideMinC: Double? = null,
+    val outsideMaxC: Double? = null,
+    /** 사용 중이던 외부 기기 (전기장판, 캠핑 냉장고 등). */
+    val devices: List<String> = emptyList(),
     val hasEnergyReading: Boolean = true,
     val batteryComparison: BatteryComparison? = null,
 ) {
     val validEnergy: Boolean get() = hasEnergyReading && durationHours.isFinite() && durationHours > 0 &&
         hvacHours in 0.0..durationHours && energyUsedPct in 0.0..100.0
     val drainPerHour: Double get() = if (durationHours > 0) energyUsedPct / durationHours else 0.0
+
+    /** 방문 일자. 형식이 맞지 않으면 null. */
+    val visitDate: java.time.LocalDate? get() = runCatching { java.time.LocalDate.parse(createdAt) }.getOrNull()
+
+    /**
+     * "11월 8일 · 외부 −2~6°C · 실내 21°C · 배터리 −14% · 9시간 · 전기장판"
+     * [today]와 연도가 다르면 "2025년 11월 8일"처럼 연도를 붙인다.
+     */
+    fun summaryLine(today: java.time.LocalDate? = null): String = listOfNotNull(
+        visitDate?.let { d ->
+            val year = if (today != null && d.year != today.year) "${d.year}년 " else ""
+            "$year${d.monthValue}월 ${d.dayOfMonth}일"
+        },
+        if (outsideMinC != null && outsideMaxC != null) "외부 ${deg(outsideMinC)}~${deg(outsideMaxC)}°C" else null,
+        avgCabinTempC?.let { "실내 ${deg(it)}°C" },
+        "${powerType.energyLabel} −${Math.round(energyUsedPct)}%",
+        "${hours(durationHours)}시간",
+        devices.takeIf { it.isNotEmpty() }?.joinToString(", "),
+    ).joinToString(" · ")
+
+    /** 측정값만: "외부 −2~6°C · 실내 21°C · 배터리 −14% · 9시간" */
+    fun valuesLine(): String = listOfNotNull(
+        if (outsideMinC != null && outsideMaxC != null) "외부 ${deg(outsideMinC)}~${deg(outsideMaxC)}°C" else null,
+        avgCabinTempC?.let { "실내 ${deg(it)}°C" },
+        "${powerType.energyLabel} −${Math.round(energyUsedPct)}%",
+        "${hours(durationHours)}시간",
+    ).joinToString(" · ")
+
+    private fun deg(c: Double): String = Math.round(c).toInt().let { if (it < 0) "−${-it}" else "$it" }
+
+    private fun hours(h: Double): String = if (h % 1.0 == 0.0) "${h.toInt()}" else "${Math.round(h * 10) / 10.0}"
 }
 
 /** 차박 세팅. 내 세팅·계절 기본값·고수 세팅이 모두 이 형태. */

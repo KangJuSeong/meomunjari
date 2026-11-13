@@ -245,10 +245,18 @@ private fun AppRail(nav: NavHostController) {
                 NavigationRailItem(
                     selected = route == item.route,
                     onClick = {
-                        nav.navigate(item.target) {
-                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
+                        if (item.target == Routes.HOME) {
+                            // 홈은 시작 화면이라 saveState/restoreState를 쓰면 방금 떠난 화면(마이 등)이
+                            // 홈의 저장 상태로 다시 복원된다. 홈 위에 쌓인 화면을 모두 걷어내기만 한다.
+                            if (!nav.popBackStack(Routes.HOME, inclusive = false)) {
+                                nav.navigate(Routes.HOME) { launchSingleTop = true }
+                            }
+                        } else {
+                            nav.navigate(item.target) {
+                                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         }
                     },
                     icon = { Icon(item.icon, contentDescription = item.label, modifier = Modifier.size(28.dp)) },
