@@ -54,6 +54,8 @@ import androidx.navigation.navArgument
 import com.example.meomunjari.di.AppContainer
 import com.example.meomunjari.domain.DriveState
 import com.example.meomunjari.ui.screens.ArrivalScreen
+import com.example.meomunjari.core.vehicle.Gear
+import com.example.meomunjari.ui.screens.ChargingScreen
 import com.example.meomunjari.ui.screens.CampingScreen
 import com.example.meomunjari.ui.screens.DrivingScreen
 import com.example.meomunjari.ui.screens.HomeScreen
@@ -90,6 +92,9 @@ fun MeomunjariRoot(container: AppContainer) {
         val nav = rememberNavController()
         val trip = container.trip
         val driveState by trip.driveState.collectAsStateWithLifecycle()
+        val station by trip.arrivedStop.collectAsStateWithLifecycle()
+        val vehicle by trip.vehicle.collectAsStateWithLifecycle()
+        val destination by trip.destination.collectAsStateWithLifecycle()
         val certified by trip.certifiedVisit.collectAsStateWithLifecycle()
         var consoleOpen by rememberSaveable { mutableStateOf(false) }
 
@@ -110,7 +115,12 @@ fun MeomunjariRoot(container: AppContainer) {
         }
 
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            Row(Modifier.fillMaxSize()) {
+            val stop = station
+            val spot = destination
+            if (stop != null && spot != null && driveState == DriveState.PARKED &&
+                vehicle.connected && vehicle.gear == Gear.PARK) {
+                ChargingScreen(stop, spot)
+            } else Row(Modifier.fillMaxSize()) {
                 AppRail(nav)
                 NavHost(
                     navController = nav,

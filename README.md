@@ -20,7 +20,7 @@ Android SDK 및 Google Maven·Pleos 저장소 접근이 필요합니다. 내비 
 
 `./gradlew :app:testMockDebugUnitTest :app:assembleMockDebug :app:assemblePleosDebug`로 단위 테스트와 두 APK를 검증합니다. 실제 차량의 경유지 수락 여부는 Pleos 환경에서 확인해야 합니다.
 
-[기획 v1](docs/application-v1.md) · [기획 v2](docs/application-v2.md) · [문장별 변경표](docs/changes-v1-v2.md) · [에너지 계산과 시장 수치 근거](docs/energy-and-evidence-v2.md)
+[기획 v1](docs/application-v1.md) · [기획 v2](docs/application-v2.md) · [문장별 변경표](docs/changes-v1-v2.md) · [에너지 계산과 시장 수치 근거](docs/energy-and-evidence-v2.md) · [기상 시각 v2.2](docs/wake-time-v2.2.md) · [충전 화면 v2.3](docs/charging-screen-v2.3.md)
 
 ## 시연 시나리오 (mock 플레이버)
 
@@ -28,7 +28,7 @@ Android SDK 및 Google Maven·Pleos 저장소 접근이 필요합니다. 내비 
 2. **인제 방태산 계곡 쉼터** → 실측 리포트 "11월 기준 새벽 실내 최저 9°C · 공조 8시간 사용 시 배터리 14% 소모 · 기록 12회 중 비 온 날 3회", "지금 2대 차박 중"
 3. 11월 기준 속초 시내에서 가상 콘솔 배터리 62% → 아침 잔량 "충분해요" / 25% → "경로상 충전소에서 N분 충전"
 4. **충전소를 경유해 차박지로** 또는 **여기로 바로 갈래요** → 차량 내비 경로 설정
-5. 콘솔 **목적지까지 자동 주행** → 주행 중 화면 → 도착 후 기어 **P** → 3초 뒤 도착 인증
+5. 콘솔 **목적지까지 자동 주행** → 경유 시 충전소에서 **모의 충전 시작** → **차박지로 출발** → 차박지 도착 후 기어 **P** → 3초 뒤 도착 인증
 6. **이 스팟 고수의 세팅**(별헌터) → 차박 모드 시작 → 공조·시트·창문·조명 적용 결과
 7. 차박 중 화면에서 **시연 가속** 켜기 → 콘솔로 실내 온도·와이퍼 바꾸기 → **차박 종료**
 8. 실측 리포트 + 리뷰·`#일출맛집` 작성 → 탐험가·기록왕 진행도 +1, 테마 마스터(별 헌터) 획득
