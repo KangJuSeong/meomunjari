@@ -50,6 +50,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.example.meomunjari.domain.WakeSchedule
+import java.time.Instant
+import java.time.ZoneId
+import java.time.LocalTime
 import java.time.LocalDate
 
 data class RouteProgress(val remainingKm: Double, val remainingMin: Int) {
@@ -117,6 +121,13 @@ class TripStore(
 
     private val _certifiedVisit = MutableStateFlow<Visit?>(null)
     val certifiedVisit: StateFlow<Visit?> = _certifiedVisit.asStateFlow()
+
+    private val _wakeTime = MutableStateFlow<LocalTime?>(null)
+    val wakeTime = _wakeTime.asStateFlow()
+
+    fun selectWakeTime(time: LocalTime?) {
+        _wakeTime.value = time?.withSecond(0)?.withNano(0)
+    }
 
     private val _camping = MutableStateFlow<CampingState?>(null)
     val camping: StateFlow<CampingState?> = _camping.asStateFlow()
@@ -287,9 +298,12 @@ class TripStore(
 
         val user = repos.user.user.value
         val snapshot = vehicle.value
+        val wakeAt = wakeTime.value
+        val startTime = Instant.ofEpochMilli(nowMs()).atZone(ZoneId.systemDefault()).toLocalTime()
+        val plannedMinutes = WakeSchedule.stayMinutes(startTime, wakeAt)
         val initialMorningPct = if (user.car.powerType == PowerType.EV && snapshot.connected) {
             val records = CampingEnergyPlanner.matchingReports(repos.reports.forSpot(spot.id), spot, visit.month)
-            val night = CampingEnergyPlanner.estimateNight(spot.overnightTemperaturesC, records, hvacNow = snapshot.hvacOn.takeIf { snapshot.hvacPowerKnown })
+            val night = CampingEnergyPlanner.estimateNight(spot.overnightTemperaturesC, records, hvacNow = snapshot.hvacOn.takeIf { snapshot.hvacPowerKnown }, stayMinutes = plannedMinutes)
             val battery = snapshot.batteryPct
             if (battery != null && battery in 0f..100f && night != null) (battery - night.drainPct).coerceAtLeast(0.0)
             else null
@@ -304,6 +318,8 @@ class TripStore(
             recording = user.consentToRecord,
             samples = listOf(sample(0L)),
             initialMorningPct = initialMorningPct,
+            plannedMinutes = plannedMinutes,
+            wakeAt = wakeAt,
         )
         _camping.value = state
         _finished.value = null
@@ -372,7 +388,7 @@ class TripStore(
         val comparison = if (userBefore.car.powerType == PowerType.EV) {
             val snap = vehicle.value
             BatteryComparison(state.initialMorningPct, snap.batteryPct?.takeIf { snap.connected && it in 0f..100f }?.toDouble(),
-                campingElapsedMs() / 60_000L)
+                campingElapsedMs() / 60_000L, state.plannedMinutes, state.wakeAt?.toString())
         } else null
         val report = if (state.recording) {
             CampingRecorder.buildReport(
@@ -397,6 +413,7 @@ class TripStore(
         }
 
         repos.spots.leave(state.spot.id)
+        selectWakeTime(null)
         finishedSpotId = state.spot.id
         _camping.value = null
         _certifiedVisit.value = null

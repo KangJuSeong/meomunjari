@@ -102,7 +102,8 @@ fun ReviewScreen(onDone: () -> Unit) {
                         val forecast = comparison.predictedMorningPct?.roundToInt()
                         val actual = comparison.endPct?.roundToInt()
                         val minutes = comparison.stayMinutes
-                        KeyValue("시작 때 예상한 8시간 뒤 잔량", forecast?.let { "$it%" } ?: "예측 자료 부족")
+                        val target = comparison.plannedWakeTime?.let { "$it 기상" } ?: "8시간 뒤"
+                        KeyValue("시작 때 예상한 ${target} 잔량", forecast?.let { "$it%" } ?: "예측 자료 부족")
                         KeyValue("실제 종료 잔량", actual?.let { "$it%" } ?: "차량 잔량 확인 불가")
                         KeyValue("실제 체류 시간", "${minutes / 60}시간 ${minutes % 60}분")
                         if (forecast != null && actual != null) {
@@ -112,7 +113,7 @@ fun ReviewScreen(onDone: () -> Unit) {
                                 delta > 0 -> "종료 잔량이 예상보다 ${abs(delta)}%p 높아요"
                                 else -> "종료 잔량이 예상보다 ${abs(delta)}%p 낮아요"
                             })
-                            if (minutes != 480L) Text("8시간 예측과 실제 체류 시간이 달라요.")
+                            if (minutes != comparison.plannedMinutes.toLong()) Text("예정한 체류 시간과 실제 체류 시간이 달라요.")
                         }
                     }
                 }

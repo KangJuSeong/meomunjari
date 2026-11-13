@@ -7,6 +7,8 @@ import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.model.Spot
 import com.example.meomunjari.core.model.Visit
 import com.example.meomunjari.core.vehicle.ApplyItemResult
+import com.example.meomunjari.domain.WakeSchedule
+import java.time.LocalTime
 import com.example.meomunjari.domain.MemberStatus
 
 /** 차박 중 기록하는 샘플 1개. simTimeMs = 차박 시작 후 경과(시연 가속 반영). */
@@ -30,6 +32,8 @@ data class CampingState(
     val protectionTriggered: Boolean = false,
     val notice: String? = null,
     val initialMorningPct: Double? = null,
+    val plannedMinutes: Int = WakeSchedule.DEFAULT_MINUTES,
+    val wakeAt: LocalTime? = null,
 ) {
     val elapsedHours: Double get() = elapsedSimMs / 3_600_000.0
 }

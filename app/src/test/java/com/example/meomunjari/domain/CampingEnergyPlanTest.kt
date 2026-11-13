@@ -49,6 +49,28 @@ class CampingEnergyPlanTest {
         assertNull(plan(0.0, cold).stop)
     }
 
+    @Test fun wakeTimeAcrossMidnightAndPartialHourChangesChargeDecision() {
+        val bedtime = java.time.LocalTime.of(23, 0)
+        val wake = java.time.LocalTime.of(6, 30)
+        val minutes = WakeSchedule.stayMinutes(bedtime, wake)
+        assertEquals(450, minutes)
+        assertEquals(480, WakeSchedule.stayMinutes(bedtime, null))
+        assertEquals(1440, WakeSchedule.stayMinutes(bedtime, bedtime))
+        assertEquals(30, WakeSchedule.stayMinutes(wake, wake.plusMinutes(30)))
+        fun estimate(duration: Int, elapsed: Double = 0.0) = CampingEnergyPlanner.estimateNight(
+            List(8) { 5.0 }, records, elapsedHours = elapsed, stayMinutes = duration)!!
+        val early = estimate(minutes)
+        val late = estimate(minutes + 30)
+        assertEquals(7.5, early.heatingHours, 0.0)
+        assertEquals(0.25, estimate(minutes, 7.25).heatingHours, 0.0)
+        assertEquals(0.0, estimate(minutes, 7.75).drainPct, 0.0)
+        val full = plan(100.0, early)
+        val pct = 100 - full.arrivalPct + full.requiredMorningPct + (early.drainPct + late.drainPct) / 2
+        assertFalse(plan(pct, early).requiresCharge)
+        assertNotNull(plan(pct, late).stop)
+        assertNull(CampingEnergyPlanner.estimateNight(List(8) { 5.0 }, records, stayMinutes = 481))
+    }
+
     @Test fun atCampCountsOnlyRemainingTimeAndObservedHvac() {
         val weather = List(8) { 5.0 }
         val partial = CampingEnergyPlanner.estimateNight(weather, records, 6.5, hvacNow = false)!!

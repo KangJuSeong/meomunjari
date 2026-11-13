@@ -135,12 +135,13 @@ fun CampingScreen(onFinished: () -> Unit) {
                         val records = CampingEnergyPlanner.matchingReports(reports, state.spot,
                             state.visit?.month ?: LocalDate.now().monthValue)
                         val night = CampingEnergyPlanner.estimateNight(state.spot.overnightTemperaturesC, records,
-                            state.elapsedHours, vehicle.hvacOn.takeIf { hvacKnown }, state.protectionTriggered && hvacKnown && !vehicle.hvacOn)
+                            state.elapsedHours, vehicle.hvacOn.takeIf { hvacKnown }, state.protectionTriggered && hvacKnown && !vehicle.hvacOn, state.plannedMinutes)
                         val pct = vehicle.batteryPct
                         Text(when {
+                            state.elapsedSimMs >= state.plannedMinutes * 60_000L -> "예정한 기상 시간이 지났어요"
                             records.size < 2 -> "측정중 · EV 기록 ${records.size}/2건"
                             night == null || pct == null -> "기온 또는 차량 잔량을 확인하고 있어요"
-                            else -> "${Math.round((pct - night.drainPct).coerceAtLeast(0.0))}% · 차박 시작 8시간 기준"
+                            else -> "${Math.round((pct - night.drainPct).coerceAtLeast(0.0))}% · ${state.wakeAt?.let { "$it 기상 기준" } ?: "차박 시작 8시간 기준"}"
                         })
                     }
                 }

@@ -222,6 +222,20 @@ class DemoScenarioTest {
         assertTrue(trip.camping.value!!.notice!!.contains("확인하지 못했어요"))
     }
 
+    @Test
+    fun reviewKeepsWakeTimeChosenBeforeCamping() = runBlocking {
+        val start = java.time.LocalDateTime.of(2026, 11, 3, 23, 0)
+        clock = start.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        trip.selectWakeTime(java.time.LocalTime.of(6, 30))
+        startNight()
+        assertEquals(450, trip.camping.value!!.plannedMinutes)
+        val comparison = trip.endCamping()!!.batteryComparison!!
+        assertEquals("06:30", comparison.plannedWakeTime)
+        assertEquals(450, comparison.plannedMinutes)
+        assertEquals(62 - 7.5 * 1.75, comparison.predictedMorningPct!!, 0.001)
+        assertNull(trip.wakeTime.value)
+    }
+
     private suspend fun startNight() {
         val spot = repos.spots.get("s-003")!!
         world.setLocation(spot.location)

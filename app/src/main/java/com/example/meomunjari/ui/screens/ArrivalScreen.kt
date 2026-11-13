@@ -37,6 +37,8 @@ import com.example.meomunjari.domain.PresetOption
 import com.example.meomunjari.domain.PresetSource
 import com.example.meomunjari.domain.SettingCompatibility
 import com.example.meomunjari.trip.StartCampingResult
+import com.example.meomunjari.core.model.PowerType
+import com.example.meomunjari.ui.components.WakeTimeButton
 import com.example.meomunjari.ui.LocalAppContainer
 import com.example.meomunjari.ui.components.Pill
 import com.example.meomunjari.ui.components.ChipFlow
@@ -65,6 +67,7 @@ fun ArrivalScreen(onStarted: () -> Unit, onRegister: () -> Unit, onSunrise: () -
     val c = LocalAppContainer.current
     val trip = c.trip
     val arrival by trip.arrival.collectAsStateWithLifecycle()
+    val wake by trip.wakeTime.collectAsStateWithLifecycle()
     val visit by trip.certifiedVisit.collectAsStateWithLifecycle()
     val vehicle by trip.vehicle.collectAsStateWithLifecycle()
     val caps by c.gateways.vehicle.capabilities.collectAsStateWithLifecycle()
@@ -160,6 +163,9 @@ fun ArrivalScreen(onStarted: () -> Unit, onRegister: () -> Unit, onSunrise: () -
             }
 
             Column(Modifier.weight(1.15f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                if (user.car.powerType == PowerType.EV) {
+                    WakeTimeButton(wake, trip::selectWakeTime, enabled = !busy)
+                }
                 Text("어떤 세팅으로 잘까요?", style = MaterialTheme.typography.titleLarge)
                 options.forEachIndexed { i, option ->
                     PresetCard(option, selected = i == selected, caps = caps, onClick = { selected = i })
