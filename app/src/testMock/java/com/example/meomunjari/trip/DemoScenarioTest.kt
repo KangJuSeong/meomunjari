@@ -33,6 +33,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -64,6 +65,14 @@ class DemoScenarioTest {
 
     @After
     fun tearDown() = scope.cancel()
+
+    @Test
+    fun presetBackrestAnglesAreAppliedPerSeat() = runBlocking {
+        val preset = repos.user.user.value.mySetting.copy(backrestPctBySeat = mapOf("ROW_1_LEFT" to 60, "ROW_1_RIGHT" to 40))
+        val results = world.apply(preset, includeDoor = false).associate { it.item to it.status }
+        assertEquals(ApplyStatus.APPLIED, results[ControlItem.SEAT])
+        assertEquals(mapOf("ROW_1_LEFT" to 60, "ROW_1_RIGHT" to 40), world.snapshot.value.seatBackrestPct)
+    }
 
     @Test
     fun restrictedPlaceReportIsRecordedOncePerReporterAndSpot() {
@@ -293,6 +302,31 @@ class DemoScenarioTest {
         world.setBattery(62f)
         val preset = setting ?: repos.presets.forSpot(spot.id).first { it.hvacOn }
         assertTrue(trip.startCamping(preset, false) is StartCampingResult.Started)
+    }
+
+    @Test
+    fun mySeatChangeDuringCampingIsAppliedToCar() = runBlocking {
+        val mine = repos.user.user.value.mySetting
+        startNight(mine)
+        assertEquals(mine.seatMemorySlot, world.snapshot.value.seatMemorySlot)
+
+        // 마이 화면에서 메모리 번호와 조수석 각도를 바꾼 것과 같다.
+        repos.user.update { u ->
+            u.copy(mySetting = u.mySetting.copy(seatMemorySlot = 3, backrestPctBySeat = mapOf("ROW_1_LEFT" to 25, "ROW_1_RIGHT" to 20)))
+        }
+        val result = trip.applyMySeatToCamping()
+        assertEquals(ApplyStatus.APPLIED, result?.status)
+        assertEquals(3, world.snapshot.value.seatMemorySlot)
+        assertEquals(mapOf("ROW_1_LEFT" to 25, "ROW_1_RIGHT" to 20), world.snapshot.value.seatBackrestPct)
+        assertEquals(3, trip.camping.value!!.preset.seatMemorySlot)
+    }
+
+    @Test
+    fun seatChangeIsNotPushedWhenCampingUsesAnotherSetting() = runBlocking {
+        startNight()
+        repos.user.update { u -> u.copy(mySetting = u.mySetting.copy(seatMemorySlot = 3)) }
+        assertNull(trip.applyMySeatToCamping())
+        assertNotEquals(3, world.snapshot.value.seatMemorySlot)
     }
 
     @Test

@@ -31,6 +31,10 @@ import com.example.meomunjari.domain.ParkingAdvisor
 import com.example.meomunjari.domain.SunCalculator
 import com.example.meomunjari.domain.SunriseMode
 import com.example.meomunjari.domain.MemberStatus
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import com.example.meomunjari.core.vehicle.ControlItem
+import com.example.meomunjari.domain.SettingCompatibility
 import com.example.meomunjari.domain.ReportAggregator
 import com.example.meomunjari.domain.SpotSearch
 import com.example.meomunjari.domain.TagNormalizer
@@ -332,6 +336,26 @@ class TripStore(
         return StartCampingResult.Started(state)
     }
 
+    private val seatMutex = Mutex()
+
+    /**
+     * 차박 중에 마이 화면에서 내 세팅의 시트(메모리 번호·좌석별 등받이 각도)를 바꾸면 차에도 바로 적용한다.
+     * 지금 차박에 쓴 세팅이 내 세팅일 때, 주차 상태일 때만 움직이고 아니면 null을 돌려준다.
+     */
+    suspend fun applyMySeatToCamping(): ApplyItemResult? {
+        val mine = repos.user.user.value.mySetting
+        val state = _camping.value ?: return null
+        if (state.preset.id != mine.id || !DriveGuard.canControl(vehicle.value)) return null
+        val result = seatMutex.withLock { gateways.vehicle.applySeat(mine) }
+        _camping.update { cur ->
+            cur?.copy(
+                preset = cur.preset.copy(seatMemorySlot = mine.seatMemorySlot, backrestPctBySeat = mine.backrestPctBySeat),
+                applyResults = cur.applyResults.filterNot { it.item == ControlItem.SEAT } + result,
+            )
+        }
+        return result
+    }
+
     fun setProtectionThreshold(pct: Int) = _camping.update { it?.copy(protectionThresholdPct = pct) }
 
     suspend fun setHvac(on: Boolean): Boolean = gateways.vehicle.setHvacPower(on)
@@ -451,7 +475,7 @@ class TripStore(
 
         var presetId: String? = null
         if (sharePreset) {
-            val preset = user.mySetting.copy(
+            val preset = SettingCompatibility.forOthers(user.mySetting).copy(
                 id = newId("preset"),
                 spotId = finished.spot.id,
                 ownerNickname = user.nickname,

@@ -21,12 +21,14 @@ class PleosLocationGateway(context: Context) : LocationGateway {
 
     private val listener = object : FusedLocationListener {
         override fun onChanged(location: LocationData?) {
+            PleosLog.debug("⇠ FusedLocation.onChanged = ${PleosLog.fmt(location)}")
             _location.value = location?.takeIf {
                 it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0
             }?.let { LatLng(it.latitude, it.longitude) }
         }
 
         override fun onError(exception: Exception) {
+            PleosLog.warn("✗ FusedLocation.onError: ${exception.javaClass.simpleName}: ${exception.message}", exception)
             _location.value = null
             Log.w(TAG, "location error: ${exception.message}")
         }
@@ -35,23 +37,32 @@ class PleosLocationGateway(context: Context) : LocationGateway {
     override fun start() {
         if (initialized) return
         runCatching {
-            if (!fused.isSupported()) {
+            val supported = fused.isSupported()
+            PleosLog.info("FusedLocation.isSupported() = $supported")
+            if (!supported) {
                 Log.w(TAG, "FusedLocation not supported on this vehicle")
                 return
             }
+            PleosLog.info("→ FusedLocation.initialize()")
             fused.initialize()
             initialized = true
+            PleosLog.info("→ FusedLocation.getLastKnownLocation(listener)")
             fused.getLastKnownLocation(listener)
+            PleosLog.info("→ FusedLocation.registerFusedLocationCallback(listener)")
             fused.registerFusedLocationCallback(listener)
-        }.onFailure { Log.e(TAG, "FusedLocation start failed", it) }
+        }.onFailure {
+            PleosLog.warn("✗ FusedLocation start: ${it.javaClass.simpleName}: ${it.message}", it)
+            Log.e(TAG, "FusedLocation start failed", it)
+        }
     }
 
     override fun stop() {
         if (!initialized) return
+        PleosLog.info("→ FusedLocation.unregisterFusedLocationCallback(listener) / release()")
         runCatching {
             fused.unregisterFusedLocationCallback(listener)
             fused.release()
-        }
+        }.onFailure { PleosLog.warn("✗ FusedLocation stop: ${it.message}", it) }
         initialized = false
         _location.value = null
     }

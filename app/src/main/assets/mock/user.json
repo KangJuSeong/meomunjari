@@ -15,7 +15,7 @@
     "targetTempC": 22.0,
     "hvacOn": true,
     "seatMemorySlot": 1,
-    "backrestAngleDeg": 140,
+    "backrestPctBySeat": { "ROW_1_LEFT": 50, "ROW_1_RIGHT": 40 },
     "windowOpenPct": 0,
     "ambientOn": true,
     "ambientBrightness": 30

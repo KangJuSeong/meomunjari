@@ -63,7 +63,7 @@ fun CampingScreen(onFinished: () -> Unit) {
         ScreenHeader(
             title = "편안한 밤 보내세요",
             subtitle = "${state.spot.name} · ${state.preset.ownerNickname}님 세팅 · " + if (state.recording) "밤사이 기록 중" else "기록 없이 제어만",
-            trailing = { if (state.recording) Pill("● 기록 중 ${state.samples.size}", MColors.Red) },
+            trailing = { if (state.recording) Pill("● 기록 중", MColors.Red) },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(Modifier.weight(1.2f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -98,7 +98,7 @@ fun CampingScreen(onFinished: () -> Unit) {
                     if (temps.size >= 2) {
                         Sparkline(temps)
                         Text(
-                            "최저 ${(temps.min() * 10).roundToInt() / 10.0}°C · 최고 ${(temps.max() * 10).roundToInt() / 10.0}°C · 샘플 ${state.samples.size}개",
+                            "최저 ${(temps.min() * 10).roundToInt() / 10.0}°C · 최고 ${(temps.max() * 10).roundToInt() / 10.0}°C",
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     } else {
@@ -118,6 +118,7 @@ fun CampingScreen(onFinished: () -> Unit) {
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = when (r.status) {
                                     ApplyStatus.APPLIED -> MColors.Good
+                                    ApplyStatus.PARTIAL -> MColors.Orange
                                     ApplyStatus.FAILED -> MColors.Danger
                                     else -> MColors.Grey500
                                 },

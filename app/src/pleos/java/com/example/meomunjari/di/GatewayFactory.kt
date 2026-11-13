@@ -12,7 +12,11 @@ import kotlinx.coroutines.flow.StateFlow
 /** pleos 플레이버: Pleos Connect SDK. 값 변경은 에뮬레이터 Virtual Console에서 한다. */
 object GatewayFactory {
     /** AAOS 속도 권한은 런타임 승인이 필요할 수 있다. */
-    val runtimePermissions: List<String> = listOf("android.car.permission.CAR_SPEED")
+    val runtimePermissions: List<String> = listOf(
+        "android.car.permission.CAR_SPEED",
+        // FusedLocation SDK 위치. Pleos 위치 서비스가 dangerous 권한으로 선언해 실행 중에 받아야 한다.
+        "pleos.car.permission.FUSED_LOCATION",
+    )
 
     @Suppress("UNUSED_PARAMETER")
     fun create(

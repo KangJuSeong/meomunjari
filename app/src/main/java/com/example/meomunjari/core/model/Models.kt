@@ -177,7 +177,11 @@ data class SettingPreset(
     val targetTempC: Double = 21.0,
     val hvacOn: Boolean = true,
     val seatMemorySlot: Int? = null,
-    val backrestAngleDeg: Int? = null,
+    /**
+     * 좌석별 등받이 눕힘 정도(0 = 가장 세움, 100 = 가장 눕힘). 키는 SeatValue 이름(ROW_1_LEFT 등),
+     * 없으면 그 좌석은 건드리지 않는다. 차마다 등받이 위치 범위가 달라 적용할 때 그 차의 범위로 바꾼다.
+     */
+    val backrestPctBySeat: Map<String, Int> = emptyMap(),
     val windowOpenPct: Int = 0,
     /** 열 도어 위치(Vehicle SDK DoorValue 이름). null이면 도어는 건드리지 않는다. */
     val openDoorArea: String? = null,
@@ -213,6 +217,11 @@ data class UserData(
     val nickname: String,
     val car: CarProfile,
     val mySetting: SettingPreset,
+    /**
+     * 시트 메모리 슬롯별로 저장한 좌석 등받이 각도. 키는 슬롯 번호(0 = 메모리 안 씀),
+     * 값은 SeatValue 이름 → 각도. 슬롯을 바꾸면 그 슬롯의 각도가 mySetting으로 불려온다.
+     */
+    val seatSlotBackrests: Map<Int, Map<String, Int>> = emptyMap(),
     val visits: List<Visit> = emptyList(),
     val registeredSpotIds: List<String> = emptyList(),
     val reportCount: Int = 0,

@@ -6,6 +6,7 @@ import ai.pleos.playground.vehicle.api.model.area.SeatArea
 import ai.pleos.playground.vehicle.api.model.area.WheelArea
 import ai.pleos.playground.vehicle.api.model.area.WindowArea
 import ai.pleos.playground.vehicle.api.model.capability.AccessType
+import ai.pleos.playground.vehicle.api.model.capability.AreaBounds
 import ai.pleos.playground.vehicle.api.model.capability.CapabilityConfig
 import ai.pleos.playground.vehicle.constant.area.DoorValue
 import ai.pleos.playground.vehicle.constant.area.MirrorValue
@@ -45,22 +46,56 @@ internal class PleosInvoker {
         areaHint: String? = null,
         onResult: (List<Any?>) -> Unit = {},
         onError: (Throwable) -> Unit = {},
+        /** capability 결과로 받은 Area 객체를 그대로 쓸 때 (예: 여러 좌석을 묶은 공조 전원·조명 영역). */
+        areaObject: Any? = null,
     ): Boolean {
+        val id = PleosLog.nextId()
+        val api = "${apiClass.simpleName}.$method"
+        // register* 는 값이 바뀔 때마다 계속 들어오는 구독 이벤트라 따로 표시한다.
+        val streaming = method.startsWith("register")
+        val loggedResult: (List<Any?>) -> Unit = { values ->
+            if (streaming) PleosLog.event(id, api, values) else PleosLog.result(id, api, values)
+            onResult(values)
+        }
+        val loggedError: (Throwable) -> Unit = { t ->
+            PleosLog.error(id, api, t)
+            onError(t)
+        }
         val function = apiClass.declaredMemberFunctions
             .filter { it.name == method && it.annotations.none { a -> a is Deprecated } }
             .minByOrNull { it.parameters.size }
         if (function == null) {
-            onError(NoSuchMethodException("${apiClass.simpleName}.$method"))
+            PleosLog.call(id, api, "value=${PleosLog.fmt(value)}, area=${PleosLog.fmt(areaHint)}")
+            loggedError(NoSuchMethodException(api))
             return false
         }
         return try {
-            val args = buildArgs(function, target, value, areaHint, onResult, onError) ?: return false
+            val args = buildArgs(function, target, value, areaHint, areaObject, loggedResult, loggedError)
+            if (args == null) {
+                PleosLog.call(id, api, "value=${PleosLog.fmt(value)}, area=${PleosLog.fmt(areaHint)} (인자 구성 실패)")
+                return false
+            }
+            PleosLog.call(
+                id, api,
+                args.filterKeys { it.kind != KParameter.Kind.INSTANCE }.entries
+                    .joinToString(", ") { (k, v) -> "${k.name}=${PleosLog.arg(v)}" },
+            )
             function.callBy(args)
+            // selectSeatMemory처럼 실패 콜백만 있는 함수는 예외 없이 보냈으면 성공으로 본다.
+            val hasSuccessCallback = function.parameters.any { p ->
+                val c = p.type.classifier as? KClass<*>
+                (c in FUNCTION_TYPES && !p.name.orEmpty().contains("fail", true)) ||
+                    c?.qualifiedName?.startsWith(LISTENER_PACKAGE) == true
+            }
+            if (!hasSuccessCallback) {
+                PleosLog.info("  #$id $api 는 완료 콜백이 없어 전송 성공으로 처리")
+                onResult(emptyList())
+            }
             true
         } catch (e: Exception) {
             val cause = (e as? InvocationTargetException)?.targetException ?: e
-            Log.w(TAG, "${apiClass.simpleName}.$method failed", cause)
-            onError(cause)
+            Log.w(TAG, "$api failed", cause)
+            loggedError(cause)
             false
         }
     }
@@ -70,6 +105,7 @@ internal class PleosInvoker {
         target: Any,
         value: Any?,
         areaHint: String?,
+        areaObject: Any?,
         onResult: (List<Any?>) -> Unit,
         onError: (Throwable) -> Unit,
     ): Map<KParameter, Any?>? {
@@ -84,7 +120,7 @@ internal class PleosInvoker {
                 cls == null -> null
                 cls in FUNCTION_TYPES -> callback(cls, p.name.orEmpty().contains("fail", true), onResult, onError)
                 cls.qualifiedName?.startsWith(LISTENER_PACKAGE) == true -> listener(cls, onResult, onError)
-                cls in AREA_TYPES -> area(cls, areaHint)
+                cls in AREA_TYPES -> areaObject?.takeIf { cls.isInstance(it) } ?: area(cls, areaHint)
                 cls == Boolean::class -> (value as? Boolean) ?: (value as? Number)?.let { it.toInt() != 0 }
                 cls == Int::class -> (value as? Number)?.toInt() ?: (value as? Boolean)?.let { if (it) 1 else 0 }
                 cls == Float::class -> (value as? Number)?.toFloat()
@@ -229,6 +265,36 @@ internal class PleosInvoker {
                 is Enum<*> -> v.name !in setOf("OFF", "STOP", "UNKNOWN", "NONE", "INTERMITTENT_OFF")
                 else -> null
             }
+        }
+
+        /**
+         * checkXxxCapabilities 결과의 Map<Area, AreaBounds>를 영역 이름 → 정수 범위로 바꾼다.
+         * 예: {SeatArea(ROW_1_LEFT)=AreaBounds(0, 100)} → {"ROW_1_LEFT"=0..100}
+         */
+        fun intBounds(values: List<Any?>): Map<String, IntRange> =
+            values.filterIsInstance<Map<*, *>>().firstOrNull()?.entries?.mapNotNull { (key, bounds) ->
+                val area = when (key) {
+                    is SeatArea -> key.values.firstOrNull()?.name
+                    is WindowArea -> key.values.firstOrNull()?.name
+                    is DoorArea -> key.values.firstOrNull()?.name
+                    else -> null
+                }
+                val b = bounds as? AreaBounds<*>
+                val lo = (b?.minValue as? Number)?.toInt()
+                val hi = (b?.maxValue as? Number)?.toInt()
+                if (area == null || lo == null || hi == null) null else area to lo..hi
+            }?.toMap().orEmpty()
+
+        /** capability 결과의 첫 영역(Map의 키나 List의 원소). 그 차가 실제로 받는 영역 그대로다. */
+        fun firstArea(values: List<Any?>): Any? {
+            fun isArea(a: Any?) = a is SeatArea || a is WindowArea || a is DoorArea
+            values.forEach { v ->
+                when (v) {
+                    is Map<*, *> -> v.keys.firstOrNull(::isArea)?.let { return it }
+                    is List<*> -> v.firstOrNull(::isArea)?.let { return it }
+                }
+            }
+            return null
         }
 
         /** checkXxxCapabilities 결과로 지원 여부 판단. */

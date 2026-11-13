@@ -14,18 +14,35 @@ data class PresetOption(val source: PresetSource, val preset: SettingPreset)
 
 data class PresetItemView(val item: ControlItem, val valueLabel: String, val supported: Boolean)
 
+/** 등받이를 따로 정할 수 있는 좌석. area는 Vehicle SDK SeatValue 이름. */
+enum class SeatPosition(val label: String, val area: String) {
+    DRIVER("운전석", "ROW_1_LEFT"),
+    PASSENGER("조수석", "ROW_1_RIGHT"),
+    REAR_LEFT("뒷좌석 좌측", "ROW_2_LEFT"),
+    REAR_RIGHT("뒷좌석 우측", "ROW_2_RIGHT"),
+    ;
+
+    companion object {
+        /** 등받이 눕힘 정도 선택 범위(%)와 간격. 0 = 가장 세움, 100 = 가장 눕힘. */
+        const val MIN_PCT = 0
+        const val MAX_PCT = 100
+        const val STEP_PCT = 5
+        const val DEFAULT_PCT = 50
+    }
+}
+
 object SettingCompatibility {
 
     /** 세팅에 담긴 제어 항목과 표시 문구. */
     fun items(preset: SettingPreset): List<Pair<ControlItem, String>> = buildList {
         add(ControlItem.HVAC to if (preset.hvacOn) "${preset.targetTempC.roundOne()}°C" else "공조 끔")
-        val seat = when {
-            preset.seatMemorySlot != null && preset.backrestAngleDeg != null ->
-                "메모리 ${preset.seatMemorySlot}번 · 등받이 ${preset.backrestAngleDeg}°"
-            preset.seatMemorySlot != null -> "메모리 ${preset.seatMemorySlot}번"
-            else -> null
-        }
-        seat?.let { add(ControlItem.SEAT to it) }
+        val seatParts = listOfNotNull(
+            preset.seatMemorySlot?.let { "메모리 ${it}번" },
+            *SeatPosition.entries.mapNotNull { pos ->
+                preset.backrestPctBySeat[pos.area]?.let { "${pos.label} 등받이 ${it}%" }
+            }.toTypedArray(),
+        )
+        if (seatParts.isNotEmpty()) add(ControlItem.SEAT to seatParts.joinToString(" · "))
         add(ControlItem.WINDOW to if (preset.windowOpenPct > 0) "${preset.windowOpenPct}% 열기" else "닫기")
         preset.openDoorArea?.let { add(ControlItem.DOOR to "${doorLabel(it)} 열기") }
         add(ControlItem.LIGHT to if (preset.ambientOn) "앰비언트 ${preset.ambientBrightness}%" else "끄기")
@@ -71,6 +88,13 @@ object SettingCompatibility {
         presets
             .filter { it.ownerNickname != myNickname }
             .maxWithOrNull(compareBy<SettingPreset> { it.ownerRating }.thenBy { it.loadCount })
+            ?.let(::forOthers)
+
+    /**
+     * 다른 사람에게 보여주고 적용할 세팅. 시트 메모리 번호는 그 사람 차에 저장된 위치라
+     * 내 차에서는 뜻이 없으므로 빼고, 좌석별 등받이 각도만 남긴다.
+     */
+    fun forOthers(preset: SettingPreset): SettingPreset = preset.copy(seatMemorySlot = null)
 
     fun doorLabel(area: String): String = when (area) {
         "ROW_1_LEFT" -> "운전석 도어"

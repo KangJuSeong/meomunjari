@@ -30,6 +30,8 @@ data class VehicleSnapshot(
     val ambientBrightness: Int = 0,
     val doorOpen: Boolean = false,
     val seatMemorySlot: Int? = null,
+    /** 좌석별 현재 등받이 눕힘 정도(0~100). 키는 SeatValue 이름. */
+    val seatBackrestPct: Map<String, Int> = emptyMap(),
     val hvacPowerKnown: Boolean = false,
 ) {
     /** EV면 배터리 %, 내연기관이면 연료 %. */
@@ -47,6 +49,8 @@ enum class ControlItem(val label: String) {
 
 enum class ApplyStatus(val label: String) {
     APPLIED("적용됨"),
+    /** 한 항목 안에서 일부만 됨 (예: 시트 메모리는 됐지만 등받이는 차가 움직이지 않음). */
+    PARTIAL("일부 적용"),
     UNSUPPORTED("이 차는 미지원"),
     FAILED("실패"),
     SKIPPED("건너뜀"),
@@ -68,6 +72,12 @@ interface VehicleGateway {
      * 주차 여부 확인은 호출하는 쪽(TripStore)이 먼저 한다.
      */
     suspend fun apply(preset: SettingPreset, includeDoor: Boolean): List<ApplyItemResult>
+
+    /** 이 차가 지원하는 운전석 시트 메모리 번호 범위. 아직 모르거나 지원하지 않으면 null. */
+    val seatMemorySlots: StateFlow<IntRange?>
+
+    /** 시트 항목(메모리·좌석별 등받이 눕힘)만 다시 적용한다. 차박 중 내 세팅의 시트를 바꿨을 때 쓴다. */
+    suspend fun applySeat(preset: SettingPreset): ApplyItemResult
 
     suspend fun setHvacPower(on: Boolean): Boolean
 }
