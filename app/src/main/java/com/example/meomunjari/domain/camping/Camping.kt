@@ -1,5 +1,6 @@
 package com.example.meomunjari.domain.camping
 
+import com.example.meomunjari.core.model.BatteryComparison
 import com.example.meomunjari.core.model.CarProfile
 import com.example.meomunjari.core.model.MeasurementReport
 import com.example.meomunjari.core.model.SettingPreset
@@ -28,6 +29,7 @@ data class CampingState(
     val protectionThresholdPct: Int = 20,
     val protectionTriggered: Boolean = false,
     val notice: String? = null,
+    val initialMorningPct: Double? = null,
 ) {
     val elapsedHours: Double get() = elapsedSimMs / 3_600_000.0
 }
@@ -40,6 +42,7 @@ data class FinishedCamping(
     val before: MemberStatus,
     val after: MemberStatus,
     val reviewSubmitted: Boolean = false,
+    val batteryComparison: BatteryComparison? = null,
 )
 
 object CampingRecorder {

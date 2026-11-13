@@ -2,6 +2,7 @@ package com.example.meomunjari.trip
 
 import com.example.meomunjari.core.Geo
 import com.example.meomunjari.core.Gateways
+import com.example.meomunjari.core.model.BatteryComparison
 import com.example.meomunjari.core.model.Amenities
 import com.example.meomunjari.core.model.LatLng
 import com.example.meomunjari.core.model.PowerType
@@ -42,6 +43,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -86,6 +89,7 @@ class TripStore(
     val timeScale: MutableStateFlow<Int>,
     private val nowMs: () -> Long = System::currentTimeMillis,
     private val today: () -> LocalDate = LocalDate::now,
+    private val elapsedMs: () -> Long = { System.nanoTime() / 1_000_000L },
 ) {
     val vehicle: StateFlow<VehicleSnapshot> get() = gateways.vehicle.snapshot
     val location: StateFlow<LatLng?> get() = gateways.location.location
@@ -142,6 +146,20 @@ class TripStore(
 
     /** 이번 방문 직전의 회원 상태. 차박 후 '이번에 오른 진행도'를 보여줄 기준. */
     private var statusBeforeVisit: MemberStatus? = null
+    private var clockAnchorMs = 0L
+    private var elapsedAtAnchorMs = 0L
+
+    private fun campingElapsedMs(): Long =
+        elapsedAtAnchorMs + (elapsedMs() - clockAnchorMs).coerceAtLeast(0) * timeScale.value.coerceAtLeast(1)
+
+    fun setTimeScale(scale: Int) {
+        if (_camping.value != null) {
+            elapsedAtAnchorMs = campingElapsedMs()
+            clockAnchorMs = elapsedMs()
+        }
+        timeScale.value = scale.coerceAtLeast(1)
+    }
+
     private var loops: List<Job> = emptyList()
 
     fun start() {
@@ -261,21 +279,33 @@ class TripStore(
 
     suspend fun startCamping(preset: SettingPreset, includeDoor: Boolean, loadedPresetId: String? = null): StartCampingResult {
         if (!DriveGuard.canControl(vehicle.value)) return StartCampingResult.NotParked
-        val visit = _certifiedVisit.value
-        val spot = visit?.let { repos.spots.get(it.spotId) } ?: return StartCampingResult.NoSpot
+        val visit = _certifiedVisit.value ?: return StartCampingResult.NoSpot
+        val spot = repos.spots.get(visit.spotId) ?: return StartCampingResult.NoSpot
 
         val results: List<ApplyItemResult> = gateways.vehicle.apply(preset, includeDoor)
         loadedPresetId?.let { repos.presets.recordLoad(it) }
 
         val user = repos.user.user.value
+        val snapshot = vehicle.value
+        val initialMorningPct = if (user.car.powerType == PowerType.EV && snapshot.connected) {
+            val records = CampingEnergyPlanner.matchingReports(repos.reports.forSpot(spot.id), spot, visit.month)
+            val night = CampingEnergyPlanner.estimateNight(spot.overnightTemperaturesC, records, hvacNow = snapshot.hvacOn.takeIf { snapshot.hvacPowerKnown })
+            val battery = snapshot.batteryPct
+            if (battery != null && battery in 0f..100f && night != null) (battery - night.drainPct).coerceAtLeast(0.0)
+            else null
+        } else null
+        clockAnchorMs = elapsedMs()
+        elapsedAtAnchorMs = 0
         val state = CampingState(
             spot = spot,
             visit = visit,
             preset = preset,
             applyResults = results,
             recording = user.consentToRecord,
+            samples = listOf(sample(0L)),
+            initialMorningPct = initialMorningPct,
         )
-        _camping.value = state.copy(samples = listOf(sample(0L)))
+        _camping.value = state
         _finished.value = null
         return StartCampingResult.Started(state)
     }
@@ -286,28 +316,37 @@ class TripStore(
 
     private suspend fun campingLoop() {
         while (scope.isActive) {
-            val scale = timeScale.value.coerceAtLeast(1)
-            val waitMs = (CampingRecorder.SAMPLE_INTERVAL_SIM_MS / scale).coerceIn(250L, CampingRecorder.SAMPLE_INTERVAL_SIM_MS)
-            delay(if (_camping.value == null) 500L else waitMs)
+            delay(500L)
             val current = _camping.value ?: continue
-            recordSample(current)
+            if (campingElapsedMs() - current.elapsedSimMs >= CampingRecorder.SAMPLE_INTERVAL_SIM_MS) {
+                recordSample(current)
+            }
         }
     }
 
     internal suspend fun recordSample(current: CampingState) {
-        val elapsed = current.elapsedSimMs + CampingRecorder.SAMPLE_INTERVAL_SIM_MS
+        val elapsed = campingElapsedMs()
         val s = sample(elapsed)
-        var notice: String? = current.notice
-        var triggered = current.protectionTriggered
+        var notice = current.notice
+        var triggered = current.protectionTriggered && vehicle.value.connected && vehicle.value.hvacPowerKnown && !s.hvacOn
         val energy = s.energyPct
-        if (!triggered && energy != null && energy <= current.protectionThresholdPct && s.hvacOn) {
-            gateways.vehicle.setHvacPower(false)
-            triggered = true
-            notice = "잔량이 ${current.protectionThresholdPct}% 아래로 내려가 공조를 껐어요"
+        if (energy != null && energy in 0f..current.protectionThresholdPct.toFloat() && s.hvacOn) {
+            val accepted = vehicle.value.connected && DriveGuard.canControl(vehicle.value) && gateways.vehicle.setHvacPower(false)
+            triggered = accepted && withTimeoutOrNull(3_000L) {
+                vehicle.first { it.connected && it.hvacPowerKnown && !it.hvacOn }
+            } != null
+            notice = when {
+                triggered -> "잔량 보호를 위해 공조를 껐어요"
+                !accepted -> "공조 끄기에 실패했어요. 차량의 공조 상태를 확인해 주세요."
+                else -> "공조 끄기를 요청했지만 꺼짐을 확인하지 못했어요. 차량 상태를 확인해 주세요."
+            }
+        } else if (s.hvacOn || !triggered) {
+            notice = null
         }
-        _camping.update {
-            it?.copy(
-                samples = it.samples + s,
+        _camping.update { active ->
+            if (active == null || active.visit?.id != current.visit?.id) active
+            else active.copy(
+                samples = active.samples + s,
                 elapsedSimMs = elapsed,
                 protectionTriggered = triggered,
                 notice = notice,
@@ -330,6 +369,11 @@ class TripStore(
         val userBefore = repos.user.user.value
         val before = statusBeforeVisit ?: status()
 
+        val comparison = if (userBefore.car.powerType == PowerType.EV) {
+            val snap = vehicle.value
+            BatteryComparison(state.initialMorningPct, snap.batteryPct?.takeIf { snap.connected && it in 0f..100f }?.toDouble(),
+                campingElapsedMs() / 60_000L)
+        } else null
         val report = if (state.recording) {
             CampingRecorder.buildReport(
                 id = newId("report"),
@@ -338,7 +382,7 @@ class TripStore(
                 car = userBefore.car,
                 month = date.monthValue,
                 createdAt = date.toString(),
-            )
+            )?.copy(batteryComparison = comparison)
         } else {
             null
         }
@@ -362,6 +406,7 @@ class TripStore(
             spot = state.spot,
             visit = state.visit,
             report = report,
+            batteryComparison = comparison,
             creditsEarned = credits,
             before = before,
             after = status(),

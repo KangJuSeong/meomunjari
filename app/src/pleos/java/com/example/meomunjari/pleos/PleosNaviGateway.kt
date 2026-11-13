@@ -22,8 +22,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
-class PleosNaviGateway(context: Context) : NaviGateway {
-    private val navi = NaviHelper(context.applicationContext)
+class PleosNaviGateway internal constructor(private val navi: NaviHelper) : NaviGateway {
+    constructor(context: Context) : this(NaviHelper(context.applicationContext))
+
     private val _destination = MutableStateFlow<NaviDestination?>(null)
     override val destination = _destination.asStateFlow()
     private val _chargingStop = MutableStateFlow<ChargingStop?>(null)

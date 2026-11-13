@@ -84,6 +84,13 @@ data class Review(
 
 /** 차가 밤새 기록한 실측값 1회분. 개인 식별 정보는 담지 않는다. */
 @Serializable
+data class BatteryComparison(
+    val predictedMorningPct: Double?,
+    val endPct: Double?,
+    val stayMinutes: Long,
+)
+
+@Serializable
 data class MeasurementReport(
     val id: String,
     val spotId: String,
@@ -98,6 +105,7 @@ data class MeasurementReport(
     val rained: Boolean,
     val createdAt: String = "",
     val hasEnergyReading: Boolean = true,
+    val batteryComparison: BatteryComparison? = null,
 ) {
     val validEnergy: Boolean get() = hasEnergyReading && durationHours.isFinite() && durationHours > 0 &&
         hvacHours in 0.0..durationHours && energyUsedPct in 0.0..100.0
