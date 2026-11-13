@@ -50,7 +50,6 @@ fun VirtualConsolePanel(console: VirtualConsole, onClose: () -> Unit, modifier: 
     val auto by console.autoDriving.collectAsStateWithLifecycle()
     val destination by c.trip.destination.collectAsStateWithLifecycle()
     val caps by c.gateways.vehicle.capabilities.collectAsStateWithLifecycle()
-    val station by c.trip.arrivedStop.collectAsStateWithLifecycle()
     val scale by c.timeScale.collectAsStateWithLifecycle()
 
     Surface(
@@ -78,7 +77,7 @@ fun VirtualConsolePanel(console: VirtualConsole, onClose: () -> Unit, modifier: 
                     Text("목적지까지 자동 주행", style = MaterialTheme.typography.bodyLarge)
                     Text(destination?.name ?: "목적지를 먼저 정하세요", style = MaterialTheme.typography.bodySmall, color = com.example.meomunjari.ui.theme.MColors.Grey500)
                 }
-                Toggle(checked = auto, enabled = destination != null && station == null, onCheckedChange = console::setAutoDrive)
+                Toggle(checked = auto, enabled = destination != null, onCheckedChange = console::setAutoDrive)
             }
 
             HorizontalDivider()
@@ -91,13 +90,6 @@ fun VirtualConsolePanel(console: VirtualConsole, onClose: () -> Unit, modifier: 
                         onClick = { console.setGear(g) },
                         shape = SegmentedButtonDefaults.itemShape(i, gears.size),
                     ) { Text(g.label) }
-                }
-            }
-            if (station != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("모의 충전", modifier = Modifier.weight(1f))
-                    Toggle(checked = vehicle.chargeState == com.example.meomunjari.core.vehicle.ChargeState.CHARGING,
-                        onCheckedChange = console::setCharging, enabled = vehicle.gear == Gear.PARK)
                 }
             }
             ConsoleSlider("속도", "${(vehicle.speedKmh ?: 0f).roundToInt()} km/h", vehicle.speedKmh ?: 0f, 0f..120f, console::setSpeed)

@@ -60,20 +60,19 @@ class DomainTest {
         val car = seed.user.car.copy(powerType = PowerType.ICE)
         val records = seed.reports.take(3).map { it.copy(powerType = PowerType.ICE, energyUsedPct = 12.0, durationHours = 8.0, hvacHours = 8.0) }
         val summary = ReportAggregator.summarize(records, "s-003", 11, PowerType.ICE)
-        val measured = EnergyPredictor.fuelForecast(62.0, 0.0, car, summary, 11, 10.0)!!
+        val measured = EnergyPredictor.fuelForecast(62.0, 0.0, car, summary, 11)!!
         assertEquals(ForecastBasis.MEASURED, measured.basis)
         assertEquals(50.0, measured.morningPct, 0.0001)
-        assertEquals(Verdict.ENOUGH, measured.verdict)
         val sparse = ReportAggregator.summarize(records.take(1), "s-003", 11, PowerType.ICE)
-        val low = EnergyPredictor.fuelForecast(20.0, 0.0, car, sparse, 11, 10.0)!!
+        val low = EnergyPredictor.fuelForecast(20.0, 0.0, car, sparse, 11)!!
         assertEquals(ForecastBasis.REFERENCE, low.basis)
-        assertEquals(Verdict.REFUEL_ON_ROUTE, low.verdict)
+        assertEquals(8.0, low.morningPct, 0.0001)
 
         val evSummary = ReportAggregator.summarize(seed.reports, "s-003", 11, PowerType.EV)
-        val fallback = EnergyPredictor.fuelForecast(80.0, 0.0, car, evSummary, 11, 10.0)!!
+        val fallback = EnergyPredictor.fuelForecast(80.0, 0.0, car, evSummary, 11)!!
         assertEquals(ForecastBasis.SEASONAL_DEFAULT, fallback.basis)
         assertEquals(0.8 * 8, fallback.overnightPct, 0.0001)
-        org.junit.Assert.assertNull(EnergyPredictor.fuelForecast(62.0, 0.0, seed.user.car, evSummary, 11, 10.0))
+        org.junit.Assert.assertNull(EnergyPredictor.fuelForecast(62.0, 0.0, seed.user.car, evSummary, 11))
     }
 
     @Test

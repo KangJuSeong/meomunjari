@@ -54,7 +54,6 @@ data class Spot(
     val visitedVehicleClasses: Map<VehicleClass, Int> = emptyMap(),
     val liveCampers: Int = 0,
     val typicalWeekendCampers: String = "",
-    val nearestChargerKm: Double = 10.0,
     val photoColors: List<String> = emptyList(),
     val overnightTemperaturesC: List<Double> = emptyList(), // 이전 목업의 도착 기준 배열
     val hourlyTemperaturesC: Map<String, Double> = emptyMap(), // 현지 정각 HH:00 → °C

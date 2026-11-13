@@ -12,7 +12,6 @@ import com.example.meomunjari.core.model.Spot
 import com.example.meomunjari.core.model.TagCount
 import com.example.meomunjari.core.model.VehicleClass
 import com.example.meomunjari.core.model.Visit
-import com.example.meomunjari.core.navi.ChargingStop
 import com.example.meomunjari.domain.CampingEnergyPlanner
 import com.example.meomunjari.core.navi.NaviDestination
 import com.example.meomunjari.core.vehicle.Gear
@@ -58,18 +57,7 @@ import java.time.ZoneId
 import java.time.LocalTime
 import java.time.LocalDate
 
-data class RouteProgress(val remainingKm: Double, val remainingMin: Int?) {
-    companion object {
-        fun estimate(from: LatLng, to: LatLng, via: LatLng?): RouteProgress {
-            if (via != null) {
-                val km = CampingEnergyPlanner.roadKm(from, via) + CampingEnergyPlanner.roadKm(via, to)
-                return RouteProgress(km, null)
-            }
-            val km = CampingEnergyPlanner.roadKm(from, to)
-            return RouteProgress(km, CampingEnergyPlanner.drivingMinutes(km))
-        }
-    }
-}
+data class RouteProgress(val remainingKm: Double, val remainingMin: Int)
 
 sealed interface StartCampingResult {
     data class Started(val state: CampingState) : StartCampingResult
@@ -109,13 +97,10 @@ class TripStore(
     private val _destination = MutableStateFlow<Spot?>(null)
     val destination: StateFlow<Spot?> = _destination.asStateFlow()
 
-    val arrivedStop = gateways.navi.arrivedStop
-    fun leaveChargingStop() = gateways.navi.leaveChargingStop()
-
-    val chargingStop = gateways.navi.chargingStop
-    val route: StateFlow<RouteProgress?> = combine(_destination, gateways.location.location, chargingStop) { spot, loc, via ->
-        if (spot == null || loc == null) null
-        else RouteProgress.estimate(loc, spot.location, via?.station?.location)
+    val route: StateFlow<RouteProgress?> = combine(_destination, location) { spot, loc ->
+        if (spot == null || loc == null) return@combine null
+        val km = CampingEnergyPlanner.roadKm(loc, spot.location)
+        RouteProgress(km, CampingEnergyPlanner.drivingMinutes(km))
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
     private val _arrival = MutableStateFlow<ArrivalStatus?>(null)
@@ -188,9 +173,9 @@ class TripStore(
 
     // ---------- 목적지 ----------
 
-    suspend fun navigateTo(spot: Spot, via: ChargingStop? = null): Boolean {
+    suspend fun navigateTo(spot: Spot): Boolean {
         val ok = gateways.navi.requestRoute(
-            NaviDestination(spot.id, spot.name, spot.location, spot.region), via,
+            NaviDestination(spot.id, spot.name, spot.location, spot.region),
         )
         if (ok) _destination.value = spot
         return ok
@@ -216,17 +201,6 @@ class TripStore(
                 loc, moving = snap.gear == Gear.DRIVE || snap.gear == Gear.REVERSE,
                 reversing = snap.gear == Gear.REVERSE,
             )
-        }
-
-        arrivedStop.value?.let { stop ->
-            // 순정 내비가 경유를 마친 뒤 운전자가 직접 출발한 경우도 처리한다.
-            if (loc != null && Geo.distanceM(loc, stop.station.location) > 300 &&
-                DriveGuard.evaluate(snap) == DriveState.DRIVING) {
-                leaveChargingStop()
-            } else {
-                _parkingAdvice.value = null
-                return
-            }
         }
 
         // 인증 후 멀리 떠나면(차박 중 아님) 인증을 해제한다.
@@ -291,7 +265,7 @@ class TripStore(
     private fun refreshParkingAdvice() {
         val status = _arrival.value
         val spot = status?.spot
-        if (spot == null || !status.withinRadius || !status.parked || arrivedStop.value != null) {
+        if (spot == null || !status.withinRadius || !status.parked) {
             _parkingAdvice.value = null
             return
         }

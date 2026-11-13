@@ -5,38 +5,19 @@ import com.example.meomunjari.core.model.CarProfile
 import com.example.meomunjari.core.model.LatLng
 import com.example.meomunjari.core.model.PowerType
 import com.example.meomunjari.core.model.Spot
-import com.example.meomunjari.core.navi.ChargingStop
-import com.example.meomunjari.core.navi.NaviDestination
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.temporal.ChronoUnit
 import kotlin.math.ceil
-import kotlin.math.min
 
 data class NightEstimate(val drainPct: Double, val heatingHours: Double, val energyKWh: Double)
-data class CampingEnergyPlan(
-    val arrivalPct: Double,
-    val night: NightEstimate?,
-    val morningPct: Double?,
-    val requiresCharge: Boolean,
-    val stop: ChargingStop?,
-    val requiredMorningPct: Double,
-)
-
 data class RouteEstimate(
+    val departure: LocalDateTime,
     val arrival: LocalDateTime,
     val arrivalPct: Double,
     val reachable: Boolean,
     val stayMinutes: Int,
     val morningPct: Double?,
-)
-
-data class DepartureComparison(
-    val departure: LocalDateTime,
-    val direct: RouteEstimate,
-    val viaArrivalPct: Double?,
-    val stop: ChargingStop?,
-    val requiresCharge: Boolean,
 )
 
 object CampingEnergyPlanner {
@@ -81,63 +62,33 @@ object CampingEnergyPlanner {
         return NightEstimate(energyKWh / car.batteryKWh * 100, heatingHours, energyKWh)
     }
 
-    fun plan(
+    fun drivingMinutes(km: Double): Int = (km / 45.0 * 60).toInt()
+
+    fun estimateDeparture(
         nowPct: Double, from: LatLng, spot: Spot, car: CarProfile, efficiency: Double?,
-        night: NightEstimate?, stations: List<NaviDestination>, includeOptionalStop: Boolean = false,
-    ): CampingEnergyPlan? {
+        departure: LocalDateTime, wake: LocalTime?, targetTempC: Double?, heatingEnabled: Boolean,
+    ): RouteEstimate? {
         val effectiveEfficiency = efficiency?.takeIf { it.isFinite() && it > 0 } ?: car.efficiencyKmPerKWh
         if (car.powerType != PowerType.EV || nowPct !in 0.0..100.0 || !car.batteryKWh.isFinite() || car.batteryKWh <= 0 ||
             !effectiveEfficiency.isFinite() || effectiveEfficiency <= 0) return null
-        fun cost(km: Double) = EnergyPredictor.consumptionPct(km, car, effectiveEfficiency)
-        val directKm = roadKm(from, spot.location)
-        val arrival = nowPct - cost(directKm)
-        val morning = night?.takeIf { arrival >= 0 }?.let { (arrival - it.drainPct).coerceAtLeast(0.0) }
-        val reserve = cost(spot.nearestChargerKm) + EnergyPredictor.RESERVE_PCT
-        val low = (morning ?: arrival) < reserve
-        val stop = if (!low && !includeOptionalStop) null else stations.mapNotNull { station ->
-            val firstKm = roadKm(from, station.location)
-            val secondKm = roadKm(station.location, spot.location)
-            if (firstKm + secondKm > directKm + maxOf(3.0, directKm * 0.25)) return@mapNotNull null
-            val atStation = nowPct - cost(firstKm)
-            val required = cost(secondKm) + (night?.drainPct ?: 0.0) + reserve
-            if (atStation < 0 || required > 100) return@mapNotNull null
-            val target = min(100.0, required + EnergyPredictor.CHARGE_MARGIN_PCT)
-            val rate = EnergyPredictor.FAST_CHARGE_PCT_PER_MIN
-            val minutes = if (low) (ceil((target - atStation) / rate / 5).toInt() * 5).coerceAtLeast(5)
-                else minOf(15, ceil((100 - atStation) / rate).toInt())
-            if (minutes <= 0) return@mapNotNull null
-            val departurePct = min(100.0, atStation + minutes * rate)
-            ChargingStop(station, minutes, ceil(if (low) target else departurePct).toInt()) to (firstKm + secondKm)
-        }.minByOrNull { it.second }?.first
-        return CampingEnergyPlan(arrival.coerceAtLeast(0.0), night, morning, low, stop, reserve)
-    }
 
-    fun drivingMinutes(km: Double): Int = (km / 45.0 * 60).toInt()
-
-    fun compareRoutes(
-        nowPct: Double, from: LatLng, spot: Spot, car: CarProfile, efficiency: Double?,
-        departure: LocalDateTime, wake: LocalTime?, targetTempC: Double?, heatingEnabled: Boolean,
-        stations: List<NaviDestination>,
-    ): DepartureComparison? {
+        val distanceKm = roadKm(from, spot.location)
+        if (!distanceKm.isFinite()) return null
         val start = departure.truncatedTo(ChronoUnit.MINUTES)
-        val directKm = roadKm(from, spot.location)
-        val directArrival = start.plusMinutes(drivingMinutes(directKm).toLong())
-        val directStay = WakeSchedule.stayMinutes(directArrival.toLocalTime(), wake)
-        val directNight = estimateNight(spot, directArrival.toLocalTime(), car, targetTempC, heatingEnabled, stayMinutes = directStay)
-        // 충전 계획은 직행 시의 체류·난방 조건을 기준으로 잡는다.
-        val plan = plan(nowPct, from, spot, car, efficiency, directNight, stations, includeOptionalStop = true) ?: return null
-
-        val eff = efficiency?.takeIf { it.isFinite() && it > 0 } ?: car.efficiencyKmPerKWh
-        fun cost(km: Double) = EnergyPredictor.consumptionPct(km, car, eff)
-        val reachable = nowPct >= cost(directKm)
-        val direct = RouteEstimate(directArrival, plan.arrivalPct, reachable, directStay,
-            plan.morningPct.takeIf { reachable })
-        val viaArrivalPct = plan.stop?.let { stop ->
-            val atStation = nowPct - cost(roadKm(from, stop.station.location))
-            val afterCharge = min(100.0, atStation + stop.minutes * EnergyPredictor.FAST_CHARGE_PCT_PER_MIN)
-            afterCharge - cost(roadKm(stop.station.location, spot.location))
-        }
-        return DepartureComparison(start, direct, viaArrivalPct, plan.stop, plan.requiresCharge)
+        val arrival = start.plusMinutes(drivingMinutes(distanceKm).toLong())
+        val arrivalPct = nowPct - EnergyPredictor.consumptionPct(distanceKm, car, effectiveEfficiency)
+        val reachable = arrivalPct >= 0
+        val stayMinutes = WakeSchedule.stayMinutes(arrival.toLocalTime(), wake)
+        val night = if (reachable) estimateNight(spot, arrival.toLocalTime(), car, targetTempC, heatingEnabled,
+            stayMinutes = stayMinutes) else null
+        return RouteEstimate(
+            departure = start,
+            arrival = arrival,
+            arrivalPct = arrivalPct.coerceAtLeast(0.0),
+            reachable = reachable,
+            stayMinutes = stayMinutes,
+            morningPct = night?.let { (arrivalPct - it.drainPct).coerceAtLeast(0.0) },
+        )
     }
 
     fun roadKm(from: LatLng, to: LatLng) = Geo.distanceM(from, to) * Geo.ROAD_FACTOR / 1000
