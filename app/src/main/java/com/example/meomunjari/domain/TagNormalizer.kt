@@ -14,6 +14,10 @@ class TagNormalizer(private val dictionary: TagDictionary) {
         return dictionary.synonyms[tag] ?: tag
     }
 
+    /** 입력한 태그를 # 또는 쉼표로 나누고 같은 대표 태그는 한 번만 넣는다. */
+    fun normalizeAll(raw: List<String>): List<String> =
+        raw.flatMap { it.split('#', ',') }.map(::normalize).filter { it.length > 1 }.distinct()
+
     fun categories(): Map<String, List<String>> = dictionary.categories
 
     fun seasonal(month: Int): List<String> = dictionary.seasonal[month.toString()].orEmpty()

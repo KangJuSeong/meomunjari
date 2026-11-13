@@ -110,6 +110,36 @@ class DomainTest {
     }
 
     @Test
+    fun mentorCreditsDistinctApplicationsByOtherVisitors() {
+        val user = seed.user.copy(presetLoadsReceived = 9)
+        val repos = seed.copy(user = user).toRepositories()
+        val own = seed.presets.single { it.ownerNickname == user.nickname }
+        val other = seed.presets.first { it.ownerNickname != user.nickname }
+        fun status() = BadgeEngine.evaluate(repos.user.user.value, seed.spots)
+        val before = status()
+        repos.presets.recordLoad(own.id, user.nickname, "self-visit")
+        repos.presets.recordLoad(other.id, user.nickname, "other-visit")
+        assertEquals(before, status())
+        repos.presets.recordLoad(own.id, "다른 운전자", "first-visit")
+        repos.presets.recordLoad(own.id, "다른 운전자", "first-visit")
+        assertEquals(10, repos.user.user.value.presetLoadsReceived)
+        assertEquals(own.loadCount + 1, repos.presets.presets.value.single { it.id == own.id }.loadCount)
+        assertTrue(status().badges.single { it.type == BadgeType.MENTOR }.earned)
+        assertEquals(before.points + BadgeEngine.POINT_BADGE, status().points)
+        repos.presets.recordLoad(own.id, "다른 운전자", "next-visit")
+        assertEquals(11, repos.user.user.value.presetLoadsReceived)
+        assertEquals(before.points + BadgeEngine.POINT_BADGE, status().points)
+    }
+
+    @Test
+    fun unknownRegionCannotEarnARegionalBadge() {
+        val spots = seed.spots.map { it.copy(region = "") }
+        val region = BadgeEngine.evaluate(seed.user, spots).badges.single { it.type == BadgeType.REGION }
+        assertEquals(0, region.current)
+        assertFalse(region.earned)
+    }
+
+    @Test
     fun masterPresetIsTopRatedOther() {
         val master = SettingCompatibility.master(seed.presets.filter { it.spotId == "s-003" }, seed.user.nickname)
         assertNotNull(master)

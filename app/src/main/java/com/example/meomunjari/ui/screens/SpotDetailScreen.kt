@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -23,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -156,13 +158,17 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
 }
 
 @Composable
-fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
+fun SpotDetailScreen(spotId: String, onBack: () -> Unit, onTag: (String) -> Unit) {
     val container = LocalAppContainer.current
     val vm: SpotDetailViewModel = viewModel(key = "spot-$spotId") { SpotDetailViewModel(container, spotId) }
     val ui by vm.ui.collectAsStateWithLifecycle()
     val wake by container.trip.wakeTime.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var message by remember { mutableStateOf<String?>(null) }
+    var reporting by rememberSaveable(spotId) { mutableStateOf(false) }
+    var reportNote by rememberSaveable(spotId) { mutableStateOf("") }
+    val placeReports by container.repos.spots.restrictedPlaceReports.collectAsStateWithLifecycle()
+    val reported = placeReports.any { it.spotId == spotId && it.reporter == ui.user?.nickname }
 
     var sending by remember(spotId) { mutableStateOf(false) }
     val activeStop by container.trip.chargingStop.collectAsStateWithLifecycle()
@@ -177,7 +183,7 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
         ScreenHeader(
             title = spot.name,
             subtitle = listOfNotNull(
-                if (exactLocation) spot.region else "${spot.region} 일대",
+                spot.region.takeIf { it.isNotBlank() }?.let { if (exactLocation) it else "$it 일대" },
                 ui.distanceM?.let { Geo.formatDistance(it) },
                 "★ ${Math.round(spot.rating * 10) / 10.0} (${spot.ratingCount})",
                 "${spot.registeredBy}님이 등록",
@@ -259,7 +265,11 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
                 item {
                     SectionCard(title = "다녀온 사람들의 이야기 ${ui.reviews.size}") {
                         Text(spot.description, style = MaterialTheme.typography.bodyLarge)
-                        ChipFlow { spot.sortedTags.forEach { TagChip(it.tag, selected = false, onClick = {}, count = it.count) } }
+                        ChipFlow {
+                            spot.sortedTags.forEach { tag ->
+                                TagChip(tag.tag, selected = false, onClick = { onTag(tag.tag) }, count = tag.count)
+                            }
+                        }
                     }
                 }
                 items(ui.reviews, key = { it.id }) { ReviewCard(it) }
@@ -310,9 +320,10 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
                     }, modifier = Modifier.fillMaxWidth(),
                 )
                 SecondaryButton(
-                    "금지 장소 신고",
+                    if (reported) "금지 장소 신고 기록됨" else "금지 장소 신고",
                     grey = true,
-                    onClick = { message = "신고가 접수됐어요. 확인 후 노출을 멈출게요." },
+                    enabled = !reported,
+                    onClick = { reporting = true },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(96.dp))
@@ -320,6 +331,28 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
         }
     }
 
+    if (reporting) {
+        AlertDialog(
+            onDismissRequest = { reporting = false },
+            title = { Text("금지 장소 신고") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("‘${spot.name}’에서 야영이 금지된 이유를 남길 수 있어요. 신고는 이번 목업 실행 중에 기록돼요.")
+                    OutlinedTextField(value = reportNote, onValueChange = { reportNote = it },
+                        label = { Text("현장 안내문 등 참고 내용 (선택)") }, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val saved = container.trip.reportRestrictedPlace(spotId, reportNote)
+                    reporting = false
+                    if (saved != null) reportNote = ""
+                    message = if (saved != null) "금지 장소 신고를 기록했어요." else "스팟을 찾을 수 없어요."
+                }) { Text("신고하기") }
+            },
+            dismissButton = { TextButton(onClick = { reporting = false }) { Text("취소") } },
+        )
+    }
     message?.let {
         AlertDialog(
             onDismissRequest = { message = null },
