@@ -113,14 +113,14 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
         val isEv = b.user.car.powerType == PowerType.EV
         val comparison = if (isEv && vehicle.connected && loc != null && vehicle.batteryPct != null) {
             CampingEnergyPlanner.compareRoutes(vehicle.batteryPct.toDouble(), loc, spot, b.user.car,
-                vehicle.efficiencyKmPerKWh?.toDouble(), now, wake, b.reports, mockChargingStations)
+                vehicle.efficiencyKmPerKWh?.toDouble(), now, wake, b.user.mySetting.targetTempC,
+                b.user.mySetting.hvacOn, mockChargingStations)
         } else null
-        val forecast = vehicle.energyPct?.takeIf { !isEv && distance != null }?.let { pct ->
-            EnergyPredictor.forecast(
+        val forecast = vehicle.fuelPct?.takeIf { !isEv && vehicle.connected && distance != null && it in 0f..100f }?.let { pct ->
+            EnergyPredictor.fuelForecast(
                 nowPct = pct.toDouble(),
                 routeKm = (distance ?: 0.0) / 1000.0 * Geo.ROAD_FACTOR,
                 car = b.user.car,
-                efficiencyKmPerKWh = vehicle.efficiencyKmPerKWh?.toDouble(),
                 summary = summary,
                 month = m,
                 chargerKm = spot.nearestChargerKm,
@@ -271,7 +271,7 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
                         WakeTimeButton(wake, container.trip::selectWakeTime)
                         val comparison = ui.comparison
                         if (comparison == null) Text("현재 위치와 차량 배터리를 확인하고 있어요")
-                        else DepartureTable(comparison, wake)
+                        else ui.user?.let { DepartureTable(comparison, wake, it.mySetting) }
                     } else ui.forecast?.let { EnergyFlow(it) } ?: Text("위치와 차량 잔량을 확인하고 있어요")
                 }
                 val stop = ui.comparison?.stop

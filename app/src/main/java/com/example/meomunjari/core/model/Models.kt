@@ -145,6 +145,8 @@ data class CarProfile(
     val efficiencyKmPerKWh: Double = 5.0,
     val fuelTankL: Double = 60.0,
     val fuelKmPerL: Double = 11.0,
+    /** 시험 차종·구동계·배터리·히트펌프 구성이 확인된 경우에만 지정한다. */
+    val hvacPowerProfile: String? = null,
 )
 
 @Serializable

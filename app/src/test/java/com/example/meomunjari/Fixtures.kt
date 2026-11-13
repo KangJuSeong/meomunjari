@@ -96,7 +96,8 @@ object Fixtures {
     private fun user(o: JsonObject) = UserData(
         nickname = o.s("nickname")!!,
         car = o["car"]!!.jsonObject.let {
-            CarProfile(it.s("model")!!, VehicleClass.valueOf(it.s("vehicleClass")!!), PowerType.valueOf(it.s("powerType")!!), it.d("batteryKWh") ?: 77.4, it.d("efficiencyKmPerKWh") ?: 5.0)
+            CarProfile(it.s("model")!!, VehicleClass.valueOf(it.s("vehicleClass")!!), PowerType.valueOf(it.s("powerType")!!),
+                it.d("batteryKWh") ?: 77.4, it.d("efficiencyKmPerKWh") ?: 5.0, hvacPowerProfile = it.s("hvacPowerProfile"))
         },
         mySetting = preset(o["mySetting"]!!.jsonObject),
         visits = o["visits"]!!.jsonArray.map { v -> v.jsonObject.let { Visit(it.s("id")!!, it.s("spotId")!!, it.s("date")!!, it.i("month")!!) } },

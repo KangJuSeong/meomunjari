@@ -21,13 +21,13 @@ class PleosLocationGateway(context: Context) : LocationGateway {
 
     private val listener = object : FusedLocationListener {
         override fun onChanged(location: LocationData?) {
-            location ?: return
-            if (location.latitude.isFinite() && location.longitude.isFinite()) {
-                _location.value = LatLng(location.latitude, location.longitude)
-            }
+            _location.value = location?.takeIf {
+                it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0
+            }?.let { LatLng(it.latitude, it.longitude) }
         }
 
         override fun onError(exception: Exception) {
+            _location.value = null
             Log.w(TAG, "location error: ${exception.message}")
         }
     }
@@ -53,6 +53,7 @@ class PleosLocationGateway(context: Context) : LocationGateway {
             fused.release()
         }
         initialized = false
+        _location.value = null
     }
 
     private companion object {

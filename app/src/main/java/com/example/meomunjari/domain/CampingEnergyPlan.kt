@@ -3,7 +3,6 @@ package com.example.meomunjari.domain
 import com.example.meomunjari.core.Geo
 import com.example.meomunjari.core.model.CarProfile
 import com.example.meomunjari.core.model.LatLng
-import com.example.meomunjari.core.model.MeasurementReport
 import com.example.meomunjari.core.model.PowerType
 import com.example.meomunjari.core.model.Spot
 import com.example.meomunjari.core.navi.ChargingStop
@@ -14,7 +13,7 @@ import java.time.temporal.ChronoUnit
 import kotlin.math.ceil
 import kotlin.math.min
 
-data class NightEstimate(val drainPct: Double, val heatingHours: Double, val samples: Int)
+data class NightEstimate(val drainPct: Double, val heatingHours: Double, val energyKWh: Double)
 data class CampingEnergyPlan(
     val arrivalPct: Double,
     val night: NightEstimate?,
@@ -30,7 +29,6 @@ data class RouteEstimate(
     val reachable: Boolean,
     val stayMinutes: Int,
     val morningPct: Double?,
-    val sampleCount: Int,
 )
 
 data class DepartureComparison(
@@ -42,64 +40,45 @@ data class DepartureComparison(
 )
 
 object CampingEnergyPlanner {
-    const val HEATING_THRESHOLD_C = 10.0
-    private const val IDLE_PCT_PER_HOUR = 0.15
-    private const val HEATING_PCT_PER_HOUR = 1.75
+    const val IONIQ_5_HEAT_PUMP = "ioniq5-2021-awd-72.6-heat-pump"
+    private const val PACK_KWH = 72.6
+    // AVL 시험의 외기 0°C·AUTO 22°C 구간 평균 전력이다 (docs/hvac-power-research.md).
+    private const val WARMUP_KW = 1.1
+    private const val MAINTENANCE_KW = 0.5
+    // 초기 구간 길이와 비공조 대기 전력은 시험에 없는 목업 가정이다.
+    private const val WARMUP_MINUTES = 20
+    private const val AUXILIARY_KW = 0.2
 
-    fun matchingReports(reports: List<MeasurementReport>, spot: Spot, month: Int) =
-        reports.filter { it.spotId == spot.id && it.month == month && it.powerType == PowerType.EV && it.validEnergy }
-            .distinctBy { it.id }
-
-    /** 매 시간의 외기온으로 난방 여부를 예측한다. 차박 중에는 현재 시간 구간에 차량 상태를 우선한다. */
+    /** 도착 직후부터 기상까지의 계획 중 아직 지나지 않은 구간만 적산한다. */
     fun estimateNight(
-        temperatures: List<Double>, records: List<MeasurementReport>, elapsedHours: Double = 0.0,
-        hvacNow: Boolean? = null, protectionTriggered: Boolean = false,
+        spot: Spot, start: LocalTime, car: CarProfile, targetTempC: Double?, heatingEnabled: Boolean,
+        elapsedHours: Double = 0.0,
         stayMinutes: Int = WakeSchedule.DEFAULT_MINUTES,
     ): NightEstimate? {
-        return estimateWindow(0, records, elapsedHours, hvacNow, protectionTriggered, stayMinutes, temperatures::getOrNull)
-    }
+        if (car.hvacPowerProfile != IONIQ_5_HEAT_PUMP || car.powerType != PowerType.EV || car.batteryKWh != PACK_KWH ||
+            stayMinutes !in 1..1440 || !elapsedHours.isFinite() || elapsedHours < 0) return null
 
-    fun estimateNight(
-        spot: Spot, start: LocalTime, records: List<MeasurementReport>, elapsedHours: Double = 0.0,
-        hvacNow: Boolean? = null, protectionTriggered: Boolean = false,
-        stayMinutes: Int = WakeSchedule.DEFAULT_MINUTES,
-    ): NightEstimate? {
-        if (spot.hourlyTemperaturesC.isEmpty()) {
-            return estimateNight(spot.overnightTemperaturesC, records, elapsedHours, hvacNow, protectionTriggered, stayMinutes)
-        }
-        val startMinute = start.hour * 60 + start.minute
-        return estimateWindow(startMinute, records, elapsedHours, hvacNow, protectionTriggered, stayMinutes) { hour ->
-            spot.hourlyTemperaturesC[LocalTime.of(hour % 24, 0).toString()]
-        }
-    }
-
-    private fun estimateWindow(
-        startMinute: Int, records: List<MeasurementReport>, elapsedHours: Double, hvacNow: Boolean?,
-        protectionTriggered: Boolean, stayMinutes: Int, temperatureAt: (Int) -> Double?,
-    ): NightEstimate? {
-        if (records.size < 2 || stayMinutes !in 1..1440 || !elapsedHours.isFinite()) return null
+        // 이전 목업의 배열은 도착 시점부터 매 60분, 현행 예보는 스팟의 현지 정각부터 유효하다.
+        val byLocalHour = spot.hourlyTemperaturesC.isNotEmpty()
+        val startMinute = if (byLocalHour) start.hour * 60 + start.minute else 0
         val end = startMinute + stayMinutes
-        val remainingStart = startMinute + (elapsedHours * 60).coerceIn(0.0, stayMinutes.toDouble())
-        val currentHour = (remainingStart / 60).toInt()
-        var heatingMinutes = 0.0
-        for (hour in currentHour until ceil(end / 60.0).toInt()) {
-            val overlap = minOf(end, (hour + 1) * 60) - maxOf(remainingStart, hour * 60.0)
-            if (overlap <= 0) continue
-            val temperature = temperatureAt(hour)?.takeIf { it.isFinite() } ?: return null
-            val heating = if (hour == currentHour && hvacNow != null) hvacNow else temperature < HEATING_THRESHOLD_C
-            if (heating && !protectionTriggered) heatingMinutes += overlap
+        val remainingStart = startMinute + (elapsedHours * 60).coerceAtMost(stayMinutes.toDouble())
+        val remainingMinutes = end - remainingStart
+        val heatingMinutes = if (heatingEnabled) remainingMinutes else 0.0
+        if (heatingMinutes > 0) {
+            if (targetTempC != 22.0) return null
+            for (hour in (remainingStart / 60).toInt() until ceil(end / 60.0).toInt()) {
+                val outside = if (byLocalHour) spot.hourlyTemperaturesC[LocalTime.of(hour % 24, 0).toString()]
+                    else spot.overnightTemperaturesC.getOrNull(hour)
+                if (outside != 0.0) return null
+            }
         }
-        val offRecords = records.filter { it.hvacHours == 0.0 }
-        val idleRate = if (offRecords.isEmpty()) IDLE_PCT_PER_HOUR
-            else offRecords.sumOf { it.energyUsedPct } / offRecords.sumOf { it.durationHours }
-        val onRecords = records.filter { it.hvacHours > 0 }
-        val onRate = if (onRecords.isEmpty()) HEATING_PCT_PER_HOUR else {
-            val onDrain = onRecords.sumOf { it.energyUsedPct - idleRate * (it.durationHours - it.hvacHours) }
-            (onDrain / onRecords.sumOf { it.hvacHours }).coerceAtLeast(idleRate)
-        }
-        val heat = heatingMinutes / 60
-        val idle = (end - remainingStart - heatingMinutes).coerceAtLeast(0.0) / 60
-        return NightEstimate(heat * onRate + idle * idleRate, heat, records.size)
+        val warmupRemaining = (startMinute + WARMUP_MINUTES - remainingStart).coerceAtLeast(0.0)
+        val warmupMinutes = minOf(heatingMinutes, warmupRemaining)
+        val heatingHours = heatingMinutes / 60
+        val energyKWh = AUXILIARY_KW * remainingMinutes / 60 +
+            WARMUP_KW * warmupMinutes / 60 + MAINTENANCE_KW * (heatingMinutes - warmupMinutes) / 60
+        return NightEstimate(energyKWh / car.batteryKWh * 100, heatingHours, energyKWh)
     }
 
     fun plan(
@@ -112,9 +91,9 @@ object CampingEnergyPlanner {
         fun cost(km: Double) = EnergyPredictor.consumptionPct(km, car, effectiveEfficiency)
         val directKm = roadKm(from, spot.location)
         val arrival = nowPct - cost(directKm)
-        val morning = night?.let { (arrival - it.drainPct).coerceAtLeast(0.0) }
+        val morning = night?.takeIf { arrival >= 0 }?.let { (arrival - it.drainPct).coerceAtLeast(0.0) }
         val reserve = cost(spot.nearestChargerKm) + EnergyPredictor.RESERVE_PCT
-        val low = arrival <= 0 || (morning != null && morning < reserve)
+        val low = (morning ?: arrival) < reserve
         val stop = if (!low && !includeOptionalStop) null else stations.mapNotNull { station ->
             val firstKm = roadKm(from, station.location)
             val secondKm = roadKm(station.location, spot.location)
@@ -137,22 +116,22 @@ object CampingEnergyPlanner {
 
     fun compareRoutes(
         nowPct: Double, from: LatLng, spot: Spot, car: CarProfile, efficiency: Double?,
-        departure: LocalDateTime, wake: LocalTime?, reports: List<MeasurementReport>, stations: List<NaviDestination>,
+        departure: LocalDateTime, wake: LocalTime?, targetTempC: Double?, heatingEnabled: Boolean,
+        stations: List<NaviDestination>,
     ): DepartureComparison? {
         val start = departure.truncatedTo(ChronoUnit.MINUTES)
         val directKm = roadKm(from, spot.location)
         val directArrival = start.plusMinutes(drivingMinutes(directKm).toLong())
         val directStay = WakeSchedule.stayMinutes(directArrival.toLocalTime(), wake)
-        val directRecords = matchingReports(reports, spot, directArrival.monthValue)
-        val directNight = estimateNight(spot, directArrival.toLocalTime(), directRecords, stayMinutes = directStay)
+        val directNight = estimateNight(spot, directArrival.toLocalTime(), car, targetTempC, heatingEnabled, stayMinutes = directStay)
         val plan = plan(nowPct, from, spot, car, efficiency, directNight, stations, includeOptionalStop = true) ?: return null
 
         val eff = efficiency?.takeIf { it.isFinite() && it > 0 } ?: car.efficiencyKmPerKWh
         fun cost(km: Double) = EnergyPredictor.consumptionPct(km, car, eff)
         val reachable = nowPct >= cost(directKm)
         val direct = RouteEstimate(directArrival, plan.arrivalPct, reachable, directStay,
-            plan.morningPct.takeIf { reachable }, directRecords.size)
-        val via = plan.stop?.let { stop ->
+            plan.morningPct.takeIf { reachable })
+        fun viaRoute(stop: ChargingStop): RouteEstimate {
             val first = roadKm(from, stop.station.location)
             val last = roadKm(stop.station.location, spot.location)
             val arrival = start.plusMinutes(drivingMinutes(first + last).toLong() + stop.minutes)
@@ -161,16 +140,24 @@ object CampingEnergyPlanner {
             // 명시한 기상 시각은 두 경로에 같은 날짜로 고정한다.
             val stay = if (wake == null) WakeSchedule.DEFAULT_MINUTES
                 else ChronoUnit.MINUTES.between(arrival, directArrival.plusMinutes(directStay.toLong())).toInt()
-            val records = matchingReports(reports, spot, arrival.monthValue)
             val morning = when {
                 stay < 0 -> null
                 stay == 0 -> arrivalPct
-                else -> estimateNight(spot, arrival.toLocalTime(), records, stayMinutes = stay)
+                else -> estimateNight(spot, arrival.toLocalTime(), car, targetTempC, heatingEnabled, stayMinutes = stay)
                     ?.let { (arrivalPct - it.drainPct).coerceAtLeast(0.0) }
             }
-            RouteEstimate(arrival, arrivalPct, true, stay, morning, records.size)
+            return RouteEstimate(arrival, arrivalPct, true, stay, morning)
         }
-        return DepartureComparison(start, direct, via, plan.stop, plan.requiresCharge)
+
+        val originalStop = plan.stop ?: return DepartureComparison(start, direct, null, null, plan.requiresCharge)
+        val via = viaRoute(originalStop)
+        if (plan.requiresCharge && directNight == null && via.morningPct != null && via.stayMinutes > 0) {
+            // 늦게 도착하면 지원 조건에 들어올 수 있다. 조기 출발 기준도 경유지의 야간 소모를 포함하도록 갱신한다.
+            val viaNight = estimateNight(spot, via.arrival.toLocalTime(), car, targetTempC, heatingEnabled, stayMinutes = via.stayMinutes)
+            val adjusted = plan(nowPct, from, spot, car, efficiency, viaNight, listOf(originalStop.station))?.stop
+            if (adjusted != null) return DepartureComparison(start, direct, viaRoute(adjusted), adjusted, true)
+        }
+        return DepartureComparison(start, direct, via, originalStop, plan.requiresCharge)
     }
 
     fun roadKm(from: LatLng, to: LatLng) = Geo.distanceM(from, to) * Geo.ROAD_FACTOR / 1000

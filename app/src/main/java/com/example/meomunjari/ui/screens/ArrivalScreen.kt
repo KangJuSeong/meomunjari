@@ -113,7 +113,7 @@ fun ArrivalScreen(onStarted: () -> Unit, onRegister: () -> Unit, onSunrise: () -
         }
     }
 
-    val advice = remember(visit?.id, arrival?.spot?.id) { trip.parkingAdvice() }
+    val advice by trip.parkingAdvice.collectAsStateWithLifecycle()
 
     Column {
         ScreenHeader(
@@ -147,7 +147,7 @@ fun ArrivalScreen(onStarted: () -> Unit, onRegister: () -> Unit, onSunrise: () -
                             emoji = "🌅",
                             iconBackground = MColors.Orange50,
                             title = "해 뜨는 쪽으로 세워볼까요?",
-                            subtitle = "내일 ${ad.sunrise.time?.let { "%02d:%02d".format(it.hour, it.minute) } ?: "-"} 일출 · " + ad.instruction(),
+                            subtitle = "${ad.sunrise.localDateTimeLabel} 일출 · ${ad.instruction()}",
                             onClick = onSunrise,
                         )
                     }

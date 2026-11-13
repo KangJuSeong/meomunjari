@@ -40,7 +40,7 @@ class SimulatedWorld(
     private val scope: CoroutineScope,
     private val timeScale: StateFlow<Int>,
     private val spotsProvider: () -> List<Spot>,
-    private val batteryKWh: Double = 77.4,
+    private val batteryKWh: Double,
 ) : VehicleGateway, LocationGateway, NaviGateway, VirtualConsole {
 
     private val _snapshot = MutableStateFlow(

@@ -1,17 +1,18 @@
 {
   "nickname": "주성",
   "car": {
-    "model": "아이오닉 5",
+    "model": "아이오닉 5 2021 AWD (히트펌프)",
     "vehicleClass": "MID",
     "powerType": "EV",
-    "batteryKWh": 77.4,
+    "batteryKWh": 72.6,
+    "hvacPowerProfile": "ioniq5-2021-awd-72.6-heat-pump",
     "efficiencyKmPerKWh": 5.0
   },
   "mySetting": {
     "id": "p-my",
     "ownerNickname": "주성",
     "title": "내 기본 세팅",
-    "targetTempC": 20.0,
+    "targetTempC": 22.0,
     "hvacOn": true,
     "seatMemorySlot": 1,
     "backrestAngleDeg": 140,

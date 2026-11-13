@@ -20,6 +20,7 @@ object GatewayFactory {
         scope: CoroutineScope,
         timeScale: StateFlow<Int>,
         spotsProvider: () -> List<Spot>,
+        batteryKWh: Double,
     ): Gateways = Gateways(
         vehicle = PleosVehicleGateway(context, scope),
         location = PleosLocationGateway(context),

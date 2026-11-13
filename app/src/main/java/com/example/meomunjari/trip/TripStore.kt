@@ -15,6 +15,7 @@ import com.example.meomunjari.core.model.Visit
 import com.example.meomunjari.core.navi.ChargingStop
 import com.example.meomunjari.domain.CampingEnergyPlanner
 import com.example.meomunjari.core.navi.NaviDestination
+import com.example.meomunjari.core.vehicle.Gear
 import com.example.meomunjari.core.vehicle.ApplyItemResult
 import com.example.meomunjari.core.vehicle.VehicleSnapshot
 import com.example.meomunjari.data.Repositories
@@ -26,6 +27,7 @@ import com.example.meomunjari.domain.DriveState
 import com.example.meomunjari.domain.HeadingTracker
 import com.example.meomunjari.domain.ParkingAdvice
 import com.example.meomunjari.domain.ParkingAdvisor
+import com.example.meomunjari.domain.SunCalculator
 import com.example.meomunjari.domain.SunriseMode
 import com.example.meomunjari.domain.MemberStatus
 import com.example.meomunjari.domain.ReportAggregator
@@ -143,12 +145,9 @@ class TripStore(
     private val verifier = ArrivalVerifier()
     private val headingTracker = HeadingTracker()
 
-    /** 차 앞머리 방향(주차 직전 주행 궤적으로 추정). 모르면 null. */
-    private val _heading = MutableStateFlow<Double?>(null)
-    val heading: StateFlow<Double?> = _heading.asStateFlow()
-
-    private val _sunriseMode = MutableStateFlow(SunriseMode.WINDSHIELD)
-    val sunriseMode: StateFlow<SunriseMode> = _sunriseMode.asStateFlow()
+    private var sunriseMode = SunriseMode.WINDSHIELD
+    private val _parkingAdvice = MutableStateFlow<ParkingAdvice?>(null)
+    val parkingAdvice = _parkingAdvice.asStateFlow()
 
     /**
      * 차박을 마친 스팟. 차가 반경 밖으로 떠나기 전까지는 같은 자리에 서 있어도 다시 인증하지 않는다.
@@ -215,9 +214,13 @@ class TripStore(
         val spots = repos.spots.spots.value
         val certified = _certifiedVisit.value
 
-        if (loc != null) {
-            headingTracker.onLocation(loc, moving = DriveGuard.evaluate(snap) == DriveState.DRIVING)
-            _heading.value = headingTracker.headingDeg
+        if (loc == null || !snap.connected || snap.gear == Gear.UNKNOWN || snap.gear == Gear.NEUTRAL) {
+            headingTracker.reset()
+        } else {
+            headingTracker.onLocation(
+                loc, moving = snap.gear == Gear.DRIVE || snap.gear == Gear.REVERSE,
+                reversing = snap.gear == Gear.REVERSE,
+            )
         }
 
         arrivedStop.value?.let { stop ->
@@ -226,6 +229,7 @@ class TripStore(
                 DriveGuard.evaluate(snap) == DriveState.DRIVING) {
                 leaveChargingStop()
             } else {
+                _parkingAdvice.value = null
                 return
             }
         }
@@ -252,6 +256,7 @@ class TripStore(
         val status = verifier.evaluate(target, loc, snap, nowMs(), already)
         _arrival.value = status
         if (status.justCertified && target != null) certify(target)
+        refreshParkingAdvice()
     }
 
     private fun certify(spot: Spot) {
@@ -278,21 +283,29 @@ class TripStore(
     // ---------- 주차 방향(일출) ----------
 
     fun setSunriseMode(mode: SunriseMode) {
-        _sunriseMode.value = mode
+        sunriseMode = mode
+        refreshParkingAdvice()
     }
 
-    /** 후진으로 들어와 주차했어요. */
     fun flipHeading() {
+        if (_parkingAdvice.value?.currentHeadingDeg == null) return
         headingTracker.flip()
-        _heading.value = headingTracker.headingDeg
+        refreshParkingAdvice()
     }
 
-    /** 지금 있는(또는 인증된) 스팟 기준 내일 아침 일출 주차 안내. */
-    fun parkingAdvice(): ParkingAdvice? {
-        val spot = _certifiedVisit.value?.let { repos.spots.get(it.spotId) } ?: _arrival.value?.spot ?: return null
-        val now = today()
-        // 해가 지기 전이라도 '내일 아침'을 기준으로 안내한다.
-        return ParkingAdvisor.advise(spot.location, now.plusDays(1), _sunriseMode.value, _heading.value)
+    private fun refreshParkingAdvice() {
+        val status = _arrival.value
+        val spot = status?.spot
+        if (spot == null || !status.withinRadius || !status.parked || arrivedStop.value != null) {
+            _parkingAdvice.value = null
+            return
+        }
+        val sun = SunCalculator.nextSunrise(spot.location, Instant.ofEpochMilli(nowMs()))
+        // 가상 콘솔에서 좌표만 옮기거나 위치가 크게 튀면 이전 장소의 방위를 쓰지 않는다.
+        val heading = headingTracker.headingDeg.takeIf {
+            headingTracker.measuredAt?.let { Geo.distanceM(it, spot.location) <= spot.radiusM + 30.0 } == true
+        }
+        _parkingAdvice.value = sun?.let { ParkingAdvisor.advise(it, sunriseMode, heading, headingTracker.flipped) }
     }
 
     // ---------- 차박 모드 ----------
@@ -312,9 +325,10 @@ class TripStore(
         val wakeAt = wakeTime.value
         val startTime = Instant.ofEpochMilli(nowMs()).atZone(ZoneId.systemDefault()).toLocalTime()
         val plannedMinutes = WakeSchedule.stayMinutes(startTime, wakeAt)
-        val initialMorningPct = if (user.car.powerType == PowerType.EV && snapshot.connected) {
-            val records = CampingEnergyPlanner.matchingReports(repos.reports.forSpot(spot.id), spot, visit.month)
-            val night = CampingEnergyPlanner.estimateNight(spot, startTime, records, hvacNow = snapshot.hvacOn.takeIf { snapshot.hvacPowerKnown }, stayMinutes = plannedMinutes)
+        val initialMorningPct = if (user.car.powerType == PowerType.EV && snapshot.connected && snapshot.hvacPowerKnown) {
+            val night = CampingEnergyPlanner.estimateNight(
+                spot, startTime, user.car, snapshot.hvacTargetC?.toDouble(), snapshot.hvacOn, stayMinutes = plannedMinutes,
+            )
             val battery = snapshot.batteryPct
             if (battery != null && battery in 0f..100f && night != null) (battery - night.drainPct).coerceAtLeast(0.0)
             else null
