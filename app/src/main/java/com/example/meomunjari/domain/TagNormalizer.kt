@@ -3,7 +3,7 @@ package com.example.meomunjari.domain
 import com.example.meomunjari.core.model.Spot
 import com.example.meomunjari.core.model.TagDictionary
 
-/** 태그 표기를 대표 태그로 묶고, 자동완성·계절 추천·음성 키워드 해석을 담당한다. */
+/** 태그 표기를 대표 태그로 묶고, 자동완성·계절 추천을 담당한다. */
 class TagNormalizer(private val dictionary: TagDictionary) {
 
     /** "바다 전망", "#오션뷰" → "#바다뷰" */
@@ -38,14 +38,5 @@ class TagNormalizer(private val dictionary: TagDictionary) {
             .distinct()
             .sortedBy { it.length }
             .take(limit)
-    }
-
-    /** "별 보기 좋고 강아지랑 갈 수 있는 곳" → [#별보기, #반려견동반] */
-    fun fromSpeech(text: String): List<String> {
-        val compact = text.replace(" ", "")
-        return dictionary.speechKeywords
-            .filterKeys { compact.contains(it) }
-            .values
-            .distinct()
     }
 }

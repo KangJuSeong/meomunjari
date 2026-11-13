@@ -138,9 +138,9 @@ fun ArrivalScreen(onStarted: () -> Unit, onRegister: () -> Unit, onSunrise: () -
                     val a = arrival
                     val inRadius = visit != null || a?.withinRadius == true
                     val parked = visit != null || DriveGuard.isParked(vehicle)
-                    CheckRow("📍", "스팟 반경 안이에요", "${spot?.radiusM ?: 300}m 안" + (a?.distanceM?.let { " · 지금 ${Geo.formatDistance(it)}" } ?: ""), inRadius)
+                    CheckRow("📍", "스팟 반경 안이에요", "${Geo.formatDistance((spot?.radiusM ?: 1000).toDouble())} 안" + (a?.distanceM?.let { " · 지금 ${Geo.formatDistance(it)}" } ?: ""), inRadius)
                     ThinDivider()
-                    CheckRow("🅿️", "P단 주차", "지금 ${vehicle.gear.label}단 · 3초 유지", parked)
+                    CheckRow("🅿️", "P단 주차", "지금 ${vehicle.gear.label}단 · 5초 유지", parked)
                     ThinDivider()
                     CheckRow("✅", if (visit != null) "방문 인증 완료" else "인증을 기다리는 중", if (visit != null) "이제 리뷰를 쓸 수 있어요" else "조건을 모두 채우면 자동으로 인증돼요", visit != null)
                 }

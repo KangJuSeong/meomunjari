@@ -29,11 +29,6 @@ class DomainTest {
     }
 
     @Test
-    fun speechBecomesTags() {
-        assertEquals(setOf("#별보기", "#반려견동반"), tags.fromSpeech("별 보기 좋고 강아지랑 갈 수 있는 곳").toSet())
-    }
-
-    @Test
     fun demoStep1_starsAndDogsFitMyCar() {
         val q = SpotQuery(tags = setOf("#별보기", "#반려견동반"), fitMyCar = true)
         val ids = SpotSearch.search(seed.spots, q, home, seed.user.car.vehicleClass).map { it.spot.id }
@@ -85,17 +80,17 @@ class DomainTest {
     fun arrivalNeedsRadiusParkAndHold() {
         val spot = seed.spots.first { it.id == "s-003" }
         val near = Geo.offsetNorth(spot.location, 60.0)
-        val v = ArrivalVerifier(holdMs = 3_000)
+        val v = ArrivalVerifier()
         val parked = VehicleSnapshot(gear = Gear.PARK, speedKmh = 0f)
         val driving = VehicleSnapshot(gear = Gear.DRIVE, speedKmh = 0f)
 
         assertFalse(v.evaluate(spot, near, driving, 0, false).certified)
         assertFalse(v.evaluate(spot, near, parked, 1_000, false).certified)
-        assertFalse(v.evaluate(spot, near, parked, 3_000, false).certified)
-        val ok = v.evaluate(spot, near, parked, 4_100, false)
+        assertFalse(v.evaluate(spot, near, parked, 5_900, false).certified)
+        val ok = v.evaluate(spot, near, parked, 6_100, false)
         assertTrue(ok.certified && ok.justCertified)
 
-        val far = Geo.offsetNorth(spot.location, 900.0)
+        val far = Geo.offsetNorth(spot.location, 1_500.0)
         assertFalse(ArrivalVerifier().evaluate(spot, far, parked, 10_000, false).withinRadius)
     }
 

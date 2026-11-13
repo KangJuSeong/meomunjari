@@ -8,16 +8,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -25,7 +21,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.meomunjari.core.Geo
 import com.example.meomunjari.domain.EnergyPredictor
 import com.example.meomunjari.ui.LocalAppContainer
-import com.example.meomunjari.ui.components.PrimaryButton
 import com.example.meomunjari.ui.components.Pill
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -35,7 +30,7 @@ import kotlin.math.roundToInt
 
 /**
  * S4 주행 중 화면. 루트에서 모든 화면을 덮는다.
- * 검색·리뷰·사진은 보이지 않고, 목적지·남은 거리·도착 예상 잔량과 음성 검색만 남긴다.
+ * 검색·리뷰·사진은 보이지 않고, 목적지·남은 거리·도착 예상 잔량만 남긴다.
  */
 @Composable
 fun DrivingScreen() {
@@ -44,9 +39,7 @@ fun DrivingScreen() {
     val via by c.trip.chargingStop.collectAsStateWithLifecycle()
     val route by c.trip.route.collectAsStateWithLifecycle()
     val vehicle by c.trip.vehicle.collectAsStateWithLifecycle()
-    val pending by c.trip.pendingVoiceTags.collectAsStateWithLifecycle()
     val user by c.repos.user.user.collectAsStateWithLifecycle()
-    var voiceOpen by remember { mutableStateOf(false) }
 
     Box(
         Modifier
@@ -73,10 +66,6 @@ fun DrivingScreen() {
             if (destination != null && route == null) {
                 Text("위치를 확인하고 있어요", style = MaterialTheme.typography.bodyLarge, color = MColors.Grey500)
             }
-            if (pending.isNotEmpty()) {
-                Text("멈추면 ${pending.joinToString(" ")} 결과를 보여드릴게요", style = MaterialTheme.typography.titleMedium, color = MColors.Blue)
-            }
-            PrimaryButton("🎙️  말로 찾기", onClick = { voiceOpen = true }, modifier = Modifier.width(360.dp).height(76.dp))
             Text("안전을 위해 주행 중에는 검색·리뷰·사진을 숨겼어요", fontSize = 18.sp, color = MColors.Grey500)
             vehicle.speedKmh?.let {
                 Text("${it.roundToInt()} km/h · 기어 ${vehicle.gear.label}", style = MaterialTheme.typography.bodySmall, color = MColors.Grey400)
@@ -87,13 +76,6 @@ fun DrivingScreen() {
                 }
             }
         }
-    }
-
-    if (voiceOpen) {
-        VoiceSearchDialog(onDismiss = { voiceOpen = false }, onTags = { tags ->
-            c.trip.queueVoiceTags(tags)
-            voiceOpen = false
-        })
     }
 }
 

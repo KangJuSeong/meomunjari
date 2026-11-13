@@ -60,7 +60,7 @@ object Fixtures {
         id = o.s("id")!!, name = o.s("name")!!, region = o.s("region")!!, lat = o.d("lat")!!, lng = o.d("lng")!!,
         overnightTemperaturesC = o["overnightTemperaturesC"]?.jsonArray.orEmpty().map { it.jsonPrimitive.double },
         hourlyTemperaturesC = o["hourlyTemperaturesC"]?.jsonObject.orEmpty().mapValues { it.value.jsonPrimitive.double },
-        radiusM = o.i("radiusM") ?: 300, description = o.s("description").orEmpty(),
+        radiusM = o.i("radiusM") ?: 1000, description = o.s("description").orEmpty(),
         amenities = o["amenities"]!!.jsonObject.let {
             Amenities(it.b("toilet") ?: false, it.i("convenienceStoreM"), it.s("ground").orEmpty(), it.s("noise").orEmpty(), it.b("water") ?: false)
         },
@@ -112,7 +112,6 @@ object Fixtures {
         categories = o["categories"]!!.jsonObject.mapValues { e -> e.value.jsonArray.map { it.jsonPrimitive.content } },
         synonyms = o["synonyms"]!!.jsonObject.mapValues { it.value.jsonPrimitive.content },
         seasonal = o["seasonal"]!!.jsonObject.mapValues { e -> e.value.jsonArray.map { it.jsonPrimitive.content } },
-        speechKeywords = o["speechKeywords"]!!.jsonObject.mapValues { it.value.jsonPrimitive.content },
     )
 
     private fun zone(o: JsonObject) = RestrictedZone(o.s("name")!!, o.d("lat")!!, o.d("lng")!!, o.i("radiusM")!!, o.s("reason")!!)

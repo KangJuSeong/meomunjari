@@ -40,7 +40,7 @@ data class Spot(
     val region: String,
     val lat: Double,
     val lng: Double,
-    val radiusM: Int = 300,
+    val radiusM: Int = 1000,
     val description: String = "",
     val amenities: Amenities = Amenities(),
     val tags: List<TagCount> = emptyList(),
@@ -224,8 +224,6 @@ data class TagDictionary(
     val synonyms: Map<String, String> = emptyMap(),
     /** "1".."12" → 그 달의 추천 태그. */
     val seasonal: Map<String, List<String>> = emptyMap(),
-    /** 음성 검색 키워드 → 태그. */
-    val speechKeywords: Map<String, String> = emptyMap(),
 )
 
 @Serializable

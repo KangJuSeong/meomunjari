@@ -82,7 +82,7 @@ class HomeViewModel(c: AppContainer) : ViewModel() {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUi())
 
     companion object {
-        const val NEARBY_KM = 60.0
+        const val NEARBY_KM = 100.0
     }
 }
 

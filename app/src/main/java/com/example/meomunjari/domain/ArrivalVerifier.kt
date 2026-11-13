@@ -22,7 +22,7 @@ data class ArrivalStatus(
  * 도착 인증: 스팟 반경 안에서 P단 주차가 holdMs 이상 이어지면 방문으로 인정한다.
  * 위치가 튀거나 잠깐 정차한 경우를 거르기 위해 유지 시간을 둔다.
  */
-class ArrivalVerifier(private val holdMs: Long = 3_000) {
+class ArrivalVerifier(private val holdMs: Long = 5_000) {
     private var holdingSpotId: String? = null
     private var holdStartedAt: Long = 0
 

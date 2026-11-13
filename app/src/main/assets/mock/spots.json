@@ -13,7 +13,7 @@
     "region": "강원도",
     "lat": 38.333,
     "lng": 128.516,
-    "radiusM": 300,
+    "radiusM": 1000,
     "description": "소나무 숲 사이 평평한 공터. 아침이면 송지호 너머로 해가 뜬다.",
     "amenities": {
       "toilet": true,
@@ -79,7 +79,7 @@
     "region": "강원도",
     "lat": 37.945,
     "lng": 128.787,
-    "radiusM": 250,
+    "radiusM": 1000,
     "description": "방파제 옆 작은 공터. 파도 소리가 가깝고 일출이 정면이다.",
     "amenities": {
       "toilet": true,
@@ -141,7 +141,7 @@
     "region": "강원도",
     "lat": 37.896,
     "lng": 128.348,
-    "radiusM": 300,
+    "radiusM": 1000,
     "description": "계곡 옆 넓은 자갈 공터. 빛 공해가 거의 없어 은하수가 보인다. 반려견과 산책하기 좋다.",
     "amenities": {
       "toilet": true,
@@ -210,7 +210,7 @@
     "region": "강원도",
     "lat": 38.219,
     "lng": 128.43,
-    "radiusM": 200,
+    "radiusM": 1000,
     "description": "굽은 옛길 끝 작은 전망 공터. 진입로가 좁아 큰 차는 돌리기 어렵다.",
     "amenities": {
       "toilet": false,
@@ -270,7 +270,7 @@
     "region": "강원도",
     "lat": 38.216,
     "lng": 128.588,
-    "radiusM": 250,
+    "radiusM": 1000,
     "description": "호수 산책로 옆 주차 공간. 도심과 가까워 처음 차박하는 사람에게 좋다.",
     "amenities": {
       "toilet": true,
@@ -336,7 +336,7 @@
     "region": "강원도",
     "lat": 38.254,
     "lng": 128.015,
-    "radiusM": 300,
+    "radiusM": 1000,
     "description": "민통선 인근 조용한 쉼터. 밤하늘이 넓고 사람이 적다.",
     "amenities": {
       "toilet": true,
@@ -397,7 +397,7 @@
     "region": "강원도",
     "lat": 37.843,
     "lng": 128.875,
-    "radiusM": 250,
+    "radiusM": 1000,
     "description": "해변 북쪽 끝 공터. 반려견 동반 차박러가 많다.",
     "amenities": {
       "toilet": true,
@@ -454,7 +454,7 @@
     "region": "강원도",
     "lat": 37.623,
     "lng": 128.549,
-    "radiusM": 400,
+    "radiusM": 1000,
     "description": "해발 1,200m 고원. 풍력발전기 아래로 별이 쏟아진다. 겨울엔 길이 얼 수 있다.",
     "amenities": {
       "toilet": true,
@@ -515,7 +515,7 @@
     "region": "강원도",
     "lat": 38.474,
     "lng": 128.439,
-    "radiusM": 300,
+    "radiusM": 1000,
     "description": "호수와 바다 사이 솔밭. 혼자 조용히 머물기 좋다.",
     "amenities": {
       "toilet": true,
