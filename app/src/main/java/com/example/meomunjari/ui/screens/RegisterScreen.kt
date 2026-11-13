@@ -1,6 +1,7 @@
 package com.example.meomunjari.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,12 +14,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,11 +37,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.meomunjari.core.model.Amenities
 import com.example.meomunjari.core.model.VehicleClass
+import com.example.meomunjari.domain.DriveGuard
+import com.example.meomunjari.domain.SpotSearch
 import com.example.meomunjari.trip.RegisterResult
 import com.example.meomunjari.ui.LocalAppContainer
 import com.example.meomunjari.ui.components.ChipFlow
 import com.example.meomunjari.ui.components.KeyValue
-import com.example.meomunjari.ui.components.Pill
 import com.example.meomunjari.ui.components.PrimaryButton
 import com.example.meomunjari.ui.components.ScreenHeader
 import com.example.meomunjari.ui.components.SectionCard
@@ -48,16 +53,30 @@ import com.example.meomunjari.ui.theme.MColors
 
 private val GROUNDS = listOf("아스팔트", "자갈 평지", "마사토", "흙 평지", "비포장")
 private val NOISES = listOf("조용함", "물소리", "파도 소리", "약간 소음")
+private val REGIONS = listOf("서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시",
+    "울산광역시", "세종특별자치시", "경기도", "강원도", "충청북도", "충청남도", "전북특별자치도",
+    "전라남도", "경상북도", "경상남도", "제주특별자치도")
 
 /** S8 신규 스팟 등록: 현재 위치 + 편의 정보 + 태그 + 금지구역 대조. */
 @Composable
 fun RegisterScreen(onBack: () -> Unit, onRegistered: (String) -> Unit) {
     val c = LocalAppContainer.current
     val location by c.trip.location.collectAsStateWithLifecycle()
+    val vehicle by c.trip.vehicle.collectAsStateWithLifecycle()
     val spots by c.repos.spots.spots.collectAsStateWithLifecycle()
 
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    val console = c.gateways.console
+    val locationChoices = remember(console) {
+        console?.locationPresets().orEmpty().mapNotNull { preset ->
+            preset.registrationPlace?.let { place -> preset.location to place }
+        }
+    }
+    val currentPlace = locationChoices.firstOrNull { (coords, _) -> coords == location }?.second
+    var manualRegion by remember { mutableStateOf("") }
+    val region = currentPlace?.region ?: manualRegion
+    var regionMenuOpen by remember { mutableStateOf(false) }
     var toilet by remember { mutableStateOf(false) }
     var store by remember { mutableStateOf(false) }
     var ground by remember { mutableStateOf(GROUNDS[1]) }
@@ -68,19 +87,61 @@ fun RegisterScreen(onBack: () -> Unit, onRegistered: (String) -> Unit) {
     var result by remember { mutableStateOf<String?>(null) }
 
     val zone = c.trip.restrictedZoneAt(location)
-    val canSubmit = name.isNotBlank() && location != null && zone == null
+    val nearby = location?.let { SpotSearch.spotAt(spots, it) }
+    val locationIssue = when {
+        location == null -> "현재 위치를 확인하고 있어요"
+        zone != null -> "${zone.name} · ${zone.reason}"
+        nearby != null -> "이미 등록된 스팟 · ${nearby.name}"
+        !DriveGuard.canRegisterSpot(vehicle) -> "주차 상태를 확인한 뒤 등록할 수 있어요"
+        else -> null
+    }
+    val canSubmit = name.isNotBlank() && locationIssue == null
 
     Column {
         ScreenHeader(title = "새 스팟 등록", subtitle = "지금 차가 있는 곳을 등록해요", onBack = onBack)
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 SectionCard(title = "위치") {
+                    if (console != null) {
+                        Text("테스트 위치 선택", style = MaterialTheme.typography.labelLarge)
+                        ChipFlow {
+                            locationChoices.forEach { (coords, place) ->
+                                FilterChip(
+                                    selected = location == coords,
+                                    onClick = { console.setLocation(coords) },
+                                    label = { Text(place.name, style = MaterialTheme.typography.labelLarge) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MColors.Blue50,
+                                        selectedLabelColor = MColors.Blue,
+                                    ),
+                                )
+                            }
+                        }
+                    }
                     KeyValue("좌표", location?.let { "%.5f, %.5f".format(it.lat, it.lng) } ?: "확인 중")
-                    if (zone != null) {
-                        Pill("등록 불가", MColors.Danger)
-                        Text(zone, style = MaterialTheme.typography.bodyLarge, color = MColors.Danger)
+                    if (locationIssue != null) {
+                        Text(locationIssue, style = MaterialTheme.typography.bodyLarge, color = MColors.Orange)
+                        if (zone != null) {
+                            Text("브이월드 형식 목업 · 광주시 공개 경계 (2025.11.24)",
+                                style = MaterialTheme.typography.bodyMedium)
+                        }
                     } else {
-                        Pill("금지 구역 아님", MColors.Good)
+                        Text("야영 가능 여부 확인 필요", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    if (currentPlace != null) {
+                        KeyValue("시·도", region)
+                    } else {
+                        Box {
+                            SecondaryButton(region.ifBlank { "시·도 선택 (선택 사항)" }, onClick = { regionMenuOpen = true })
+                            DropdownMenu(expanded = regionMenuOpen, onDismissRequest = { regionMenuOpen = false }) {
+                                (listOf("") + REGIONS).forEach { choice ->
+                                    DropdownMenuItem(text = { Text(choice.ifBlank { "선택 안 함" }) }, onClick = {
+                                        manualRegion = choice
+                                        regionMenuOpen = false
+                                    })
+                                }
+                            }
+                        }
                     }
                 }
                 OutlinedTextField(
@@ -119,9 +180,17 @@ fun RegisterScreen(onBack: () -> Unit, onRegistered: (String) -> Unit) {
                     ChipFlow { NOISES.forEach { n -> TagChip(n, noise == n, onClick = { noise = n }) } }
                 }
                 SectionCard(title = "해시태그") {
+                    val candidates = if (tagInput.isBlank()) c.tags.popular(spots, 10)
+                        else c.tags.suggest(tagInput, spots)
                     ChipFlow {
-                        (c.tags.popular(spots, 10) + tags).distinct().forEach { t ->
-                            TagChip(t, t in tags, onClick = { if (t in tags) tags.remove(t) else tags.add(t) })
+                        (tags + candidates).distinct().forEach { t ->
+                            TagChip(t, t in tags, onClick = {
+                                if (t in tags) tags.remove(t)
+                                else {
+                                    tags.add(t)
+                                    tagInput = ""
+                                }
+                            })
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -130,9 +199,9 @@ fun RegisterScreen(onBack: () -> Unit, onRegistered: (String) -> Unit) {
                             placeholder = { Text("#오션뷰 → #바다뷰로 묶여요") }, singleLine = true,
                         )
                         Spacer(Modifier.size(8.dp))
-                        SecondaryButton("추가", onClick = {
-                            val t = c.tags.normalize(tagInput)
-                            if (t.length > 1 && t !in tags) tags.add(t)
+                        val pendingTags = c.tags.normalizeAll(listOf(tagInput))
+                        SecondaryButton("추가", enabled = pendingTags.isNotEmpty(), onClick = {
+                            tags.addAll(pendingTags.filterNot { it in tags })
                             tagInput = ""
                         })
                     }
@@ -151,14 +220,17 @@ fun RegisterScreen(onBack: () -> Unit, onRegistered: (String) -> Unit) {
                                 ground = ground,
                                 noise = noise,
                             ),
-                            rawTags = tags.toList() + if (toilet) listOf("#화장실있음") else emptyList(),
+                            rawTags = tags + tagInput + if (toilet) listOf("#화장실있음") else emptyList(),
                             maxVehicleClass = maxClass,
+                            region = region,
                         )
                         when (r) {
                             is RegisterResult.Registered -> onRegistered(r.spot.id)
                             is RegisterResult.Restricted -> result = "${r.zoneName}: ${r.reason}"
                             RegisterResult.Duplicate -> result = "이미 등록된 스팟 반경 안이에요. 기존 스팟에 리뷰와 태그를 남겨 주세요."
                             RegisterResult.NoLocation -> result = "현재 위치를 확인할 수 없어요"
+                            RegisterResult.NotParked -> result = "주차 상태를 확인한 뒤 등록해 주세요"
+                            RegisterResult.NameRequired -> result = "스팟 이름을 입력해 주세요"
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
