@@ -27,7 +27,15 @@ class AppContainer(context: Context) {
         scope = appScope,
         timeScale = timeScale,
         spotsProvider = { repos.spots.spots.value },
+        batteryKWh = repos.user.user.value.car.batteryKWh,
     )
+
+    init {
+        // The seed describes the virtual IONIQ 5. Pleos does not identify the connected car's trim.
+        if (gateways.console == null) {
+            repos.user.update { it.copy(car = it.car.copy(hvacPowerProfile = null)) }
+        }
+    }
 
     val trip = TripStore(appScope, gateways, repos, tags, timeScale)
 

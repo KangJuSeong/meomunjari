@@ -2,6 +2,7 @@ package com.example.meomunjari.pleos
 
 import android.content.Context
 import android.util.Log
+import com.example.meomunjari.core.vehicle.ChargeState
 import com.example.meomunjari.core.vehicle.Gear
 
 /**
@@ -33,6 +34,15 @@ internal class AaosCarProperties(private val context: Context) {
         }
     }
 
+    /** AAOS VehiclePropertyIds.EV_CHARGE_STATE / EvChargeState. */
+    fun chargeState(): ChargeState = when (read(289410881, Int::class.javaObjectType)) {
+        1 -> ChargeState.CHARGING
+        2 -> ChargeState.FULL
+        3 -> ChargeState.IDLE
+        4 -> ChargeState.ERROR
+        else -> ChargeState.UNKNOWN
+    }
+
     /** m/s → km/h */
     fun speedKmh(): Float? = (read(PERF_VEHICLE_SPEED, java.lang.Float::class.java) as? Float)?.let { it * 3.6f }
 
@@ -45,6 +55,7 @@ internal class AaosCarProperties(private val context: Context) {
             Int::class.javaPrimitiveType,
         )
         val value = getProperty.invoke(m, type, propertyId, 0) ?: return null
+        if (value.javaClass.getMethod("getStatus").invoke(value) != 0) return null
         value.javaClass.getMethod("getValue").invoke(value)
     }.getOrNull()
 

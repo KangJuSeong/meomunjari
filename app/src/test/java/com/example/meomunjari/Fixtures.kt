@@ -58,6 +58,8 @@ object Fixtures {
 
     private fun spot(o: JsonObject) = Spot(
         id = o.s("id")!!, name = o.s("name")!!, region = o.s("region")!!, lat = o.d("lat")!!, lng = o.d("lng")!!,
+        overnightTemperaturesC = o["overnightTemperaturesC"]?.jsonArray.orEmpty().map { it.jsonPrimitive.double },
+        hourlyTemperaturesC = o["hourlyTemperaturesC"]?.jsonObject.orEmpty().mapValues { it.value.jsonPrimitive.double },
         radiusM = o.i("radiusM") ?: 300, description = o.s("description").orEmpty(),
         amenities = o["amenities"]!!.jsonObject.let {
             Amenities(it.b("toilet") ?: false, it.i("convenienceStoreM"), it.s("ground").orEmpty(), it.s("noise").orEmpty(), it.b("water") ?: false)
@@ -94,7 +96,8 @@ object Fixtures {
     private fun user(o: JsonObject) = UserData(
         nickname = o.s("nickname")!!,
         car = o["car"]!!.jsonObject.let {
-            CarProfile(it.s("model")!!, VehicleClass.valueOf(it.s("vehicleClass")!!), PowerType.valueOf(it.s("powerType")!!), it.d("batteryKWh") ?: 77.4, it.d("efficiencyKmPerKWh") ?: 5.0)
+            CarProfile(it.s("model")!!, VehicleClass.valueOf(it.s("vehicleClass")!!), PowerType.valueOf(it.s("powerType")!!),
+                it.d("batteryKWh") ?: 77.4, it.d("efficiencyKmPerKWh") ?: 5.0, hvacPowerProfile = it.s("hvacPowerProfile"))
         },
         mySetting = preset(o["mySetting"]!!.jsonObject),
         visits = o["visits"]!!.jsonArray.map { v -> v.jsonObject.let { Visit(it.s("id")!!, it.s("spotId")!!, it.s("date")!!, it.i("month")!!) } },

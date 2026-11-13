@@ -3,6 +3,9 @@ package com.example.meomunjari.trip
 import com.example.meomunjari.Fixtures
 import com.example.meomunjari.core.Gateways
 import com.example.meomunjari.core.Geo
+import com.example.meomunjari.core.model.SettingPreset
+import com.example.meomunjari.domain.CampingEnergyPlanner
+import com.example.meomunjari.data.mock.mockChargingStations
 import com.example.meomunjari.core.vehicle.ApplyStatus
 import com.example.meomunjari.core.vehicle.ControlItem
 import com.example.meomunjari.core.vehicle.Gear
@@ -32,20 +35,94 @@ class DemoScenarioTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val repos = Fixtures.seed().toRepositories()
     private val timeScale = MutableStateFlow(600)
-    private val world = SimulatedWorld(scope, timeScale, { repos.spots.spots.value })
-    private var clock = 0L
+    private val world = SimulatedWorld(scope, timeScale, { repos.spots.spots.value }, repos.user.user.value.car.batteryKWh)
+    private var clock = java.time.LocalDateTime.of(2026, 11, 3, 23, 0)
+        .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+    private var ignorePowerCommand = false
+    private val vehicle = object : com.example.meomunjari.core.vehicle.VehicleGateway by world {
+        override suspend fun setHvacPower(on: Boolean): Boolean =
+            if (ignorePowerCommand) true else world.setHvacPower(on)
+    }
     private val trip = TripStore(
         scope = scope,
-        gateways = Gateways(world, world, world, world, "mock"),
+        gateways = Gateways(vehicle, world, world, world, "mock"),
         repos = repos,
         tags = TagNormalizer(repos.reference.tags),
         timeScale = timeScale,
         nowMs = { clock },
+        elapsedMs = { clock },
         today = { LocalDate.of(2026, 11, 3) },
     )
 
     @After
     fun tearDown() = scope.cancel()
+
+    @Test
+    fun chargeWaypointRetainsFinalCampsite() = runBlocking {
+        val spot = repos.spots.get("s-003")!!
+        val user = repos.user.user.value
+        val night = CampingEnergyPlanner.estimateNight(spot, java.time.LocalTime.of(23, 0), user.car,
+            user.mySetting.targetTempC, user.mySetting.hvacOn)
+        val from = world.location.value!!
+        val stop = CampingEnergyPlanner.plan(25.0, from, spot, repos.user.user.value.car, 5.1,
+            night, mockChargingStations)!!.stop!!
+        world.setBattery(25f)
+        assertTrue(trip.navigateTo(spot))
+        assertTrue(trip.navigateTo(spot, stop))
+        assertEquals(spot.id, world.destination.value?.spotId)
+        world.setAutoDrive(true)
+        var ticks = 0
+        while (world.chargingStop.value != null && ticks++ < 100) world.tick(1_000)
+        assertEquals(stop.station.location, world.location.value)
+        assertEquals(spot.id, world.destination.value?.spotId)
+        assertEquals(stop, world.arrivedStop.value)
+        assertEquals(Gear.PARK, world.snapshot.value.gear)
+        val arrivalPct = world.snapshot.value.batteryPct!!
+        world.tick(1_000)
+        assertEquals(arrivalPct, world.snapshot.value.batteryPct!!)
+        world.setCharging(true)
+        world.tick(1_000)
+        assertTrue(world.snapshot.value.batteryPct!! in (arrivalPct + 9f)..(arrivalPct + 11f))
+        world.setCharging(false)
+        val paused = world.snapshot.value.batteryPct!!
+        world.tick(1_000)
+        assertEquals(paused, world.snapshot.value.batteryPct!!)
+        world.setCharging(true)
+        repeat(3) { world.tick(1_000) }
+        assertTrue(world.snapshot.value.batteryPct!! >= stop.targetPct!!)
+        assertEquals(stop.station.location, world.location.value)
+        trip.leaveChargingStop()
+        assertNull(world.arrivedStop.value)
+        repeat(40) { world.tick(1_000) }
+        assertTrue(Geo.distanceM(world.location.value!!, spot.location) < spot.radiusM)
+        assertTrue(trip.navigateTo(spot, stop))
+        trip.cancelRoute()
+        assertNull(world.chargingStop.value)
+        assertNull(world.destination.value)
+    }
+
+    @Test
+    fun leavingEarlyAndCancellingAtStationClearCharging() = runBlocking {
+        val spot = repos.spots.get("s-003")!!
+        val stop = com.example.meomunjari.core.navi.ChargingStop(mockChargingStations.first(), 15, 70)
+        repeat(2) { attempt ->
+            world.setLocation(stop.station.location)
+            trip.navigateTo(spot, stop)
+            world.setAutoDrive(true)
+            world.tick(1_000)
+            assertEquals(stop, trip.arrivedStop.value)
+            world.setCharging(true)
+            if (attempt == 0) {
+                trip.leaveChargingStop()
+                assertEquals(spot.id, world.destination.value?.spotId)
+            } else {
+                trip.cancelRoute()
+                assertNull(world.destination.value)
+            }
+            assertNull(trip.arrivedStop.value)
+            assertEquals(com.example.meomunjari.core.vehicle.ChargeState.IDLE, world.snapshot.value.chargeState)
+        }
+    }
 
     @Test
     fun fullDemoFlow() = runBlocking {
@@ -77,17 +154,18 @@ class DemoScenarioTest {
         world.setCabinTemp(12f)
         trip.setConsent(true)
         val master = SettingCompatibility.master(repos.presets.forSpot("s-003"), repos.user.user.value.nickname)!!
+        world.setBattery(62f)
         val started = trip.startCamping(master, includeDoor = false, loadedPresetId = master.id)
         assertTrue(started is StartCampingResult.Started)
         val results = (started as StartCampingResult.Started).state.applyResults.associate { it.item to it.status }
         assertEquals(ApplyStatus.APPLIED, results[ControlItem.HVAC])
         assertEquals(ApplyStatus.UNSUPPORTED, results[ControlItem.WINDOW])
-        assertEquals(21f, world.snapshot.value.hvacTargetC)
+        assertEquals(22f, world.snapshot.value.hvacTargetC)
         assertEquals(38, repos.presets.forSpot("s-003").first { it.id == master.id }.loadCount)
 
         // 7. 밤새 기록: 1초 = 10분 가속, 8시간 = 48샘플. 중간에 비.
-        world.setBattery(62f)
         repeat(48) { i ->
+            clock += 1_000
             world.setWiper(i in 20..22)
             world.tick(1_000)
             trip.recordSample(trip.camping.value!!)
@@ -106,7 +184,12 @@ class DemoScenarioTest {
         }
         assertNull("차박 종료 후 같은 스팟을 재인증하면 안 된다", trip.certifiedVisit.value)
         assertEquals(visitsBefore, repos.user.user.value.visits.size)
+        val comparison = finished.batteryComparison!!
+        assertEquals(480L, comparison.stayMinutes)
+        assertEquals(62 - 5.8 / 72.6 * 100, comparison.predictedMorningPct!!, 0.01)
+        assertEquals(world.snapshot.value.batteryPct!!.toDouble(), comparison.endPct!!, 0.001)
         val report = finished.report!!
+        assertEquals(comparison, report.batteryComparison)
         assertEquals(8.0, report.durationHours, 0.01)
         assertTrue("공조 8시간이면 배터리가 10~20% 줄어야 한다: ${report.energyUsedPct}", report.energyUsedPct in 10.0..20.0)
         assertTrue(report.rained)
@@ -136,6 +219,86 @@ class DemoScenarioTest {
         clock += 3_500
         trip.evaluateArrival()
         assertNotNull("다시 찾아오면 인증돼야 한다", trip.certifiedVisit.value)
+    }
+
+    @Test
+    fun earlyFinishUsesLatestBatteryAndPreservesOriginalForecastAcrossSpeedChanges() = runBlocking {
+        startNight()
+        clock += 3_000 // 30 simulated minutes
+        trip.setTimeScale(60)
+        clock += 5_000 // 5 more minutes, without a new sample
+        world.setBattery(55f)
+        val finished = trip.endCamping()!!
+        val comparison = finished.batteryComparison!!
+        assertEquals(62 - 5.8 / 72.6 * 100, comparison.predictedMorningPct!!, 0.01)
+        assertEquals(55.0, comparison.endPct!!, 0.0)
+        assertEquals(35L, comparison.stayMinutes)
+        assertNull(finished.report)
+    }
+
+    @Test
+    fun guardRetriesAfterRefusalAndConfirmsPowerOff() = runBlocking {
+        startNight()
+        world.setBattery(10f)
+        world.setCapability(ControlItem.HVAC, false)
+        clock += 1_000
+        trip.recordSample(trip.camping.value!!)
+        assertTrue(world.snapshot.value.hvacOn)
+        assertTrue(!trip.camping.value!!.protectionTriggered)
+        assertTrue(trip.camping.value!!.notice!!.contains("실패"))
+        world.setCapability(ControlItem.HVAC, true)
+        clock += 1_000
+        trip.recordSample(trip.camping.value!!)
+        assertTrue(!world.snapshot.value.hvacOn)
+        assertTrue(trip.camping.value!!.protectionTriggered)
+    }
+
+    @Test
+    fun guardDoesNotClaimSuccessWithoutPowerStateConfirmation() = runBlocking {
+        startNight()
+        world.setBattery(10f)
+        ignorePowerCommand = true
+        clock += 1_000
+        trip.recordSample(trip.camping.value!!)
+        assertTrue(world.snapshot.value.hvacOn)
+        assertTrue(!trip.camping.value!!.protectionTriggered)
+        assertTrue(trip.camping.value!!.notice!!.contains("확인하지 못했어요"))
+    }
+
+    @Test
+    fun reviewKeepsWakeTimeChosenBeforeCamping() = runBlocking {
+        val start = java.time.LocalDateTime.of(2026, 11, 3, 23, 0)
+        clock = start.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        trip.selectWakeTime(java.time.LocalTime.of(6, 30))
+        startNight()
+        assertEquals(450, trip.camping.value!!.plannedMinutes)
+        val comparison = trip.endCamping()!!.batteryComparison!!
+        assertEquals("06:30", comparison.plannedWakeTime)
+        assertEquals(450, comparison.plannedMinutes)
+        assertEquals(62 - 5.45 / 72.6 * 100, comparison.predictedMorningPct!!, 0.001)
+        assertNull(trip.wakeTime.value)
+    }
+
+    @Test
+    fun differentCabinSetpointKeepsWakeEstimateUnknownDespiteSpotReports() = runBlocking {
+        val setting = repos.user.user.value.mySetting.copy(targetTempC = 19.0)
+        startNight(setting)
+        assertEquals(19f, world.snapshot.value.hvacTargetC)
+        assertNull(trip.camping.value!!.initialMorningPct)
+        assertNull(trip.endCamping()!!.batteryComparison!!.predictedMorningPct)
+    }
+
+    private suspend fun startNight(setting: SettingPreset? = null) {
+        val spot = repos.spots.get("s-003")!!
+        world.setLocation(spot.location)
+        world.setGear(Gear.PARK)
+        trip.evaluateArrival()
+        clock += 3_500
+        trip.evaluateArrival()
+        trip.setConsent(false)
+        world.setBattery(62f)
+        val preset = setting ?: repos.presets.forSpot(spot.id).first { it.hvacOn }
+        assertTrue(trip.startCamping(preset, false) is StartCampingResult.Started)
     }
 
     @Test

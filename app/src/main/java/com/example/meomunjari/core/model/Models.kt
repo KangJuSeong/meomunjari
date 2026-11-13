@@ -56,6 +56,8 @@ data class Spot(
     val typicalWeekendCampers: String = "",
     val nearestChargerKm: Double = 10.0,
     val photoColors: List<String> = emptyList(),
+    val overnightTemperaturesC: List<Double> = emptyList(), // 이전 목업의 도착 기준 배열
+    val hourlyTemperaturesC: Map<String, Double> = emptyMap(), // 현지 정각 HH:00 → °C
 ) {
     val location: LatLng get() = LatLng(lat, lng)
 
@@ -83,6 +85,15 @@ data class Review(
 
 /** 차가 밤새 기록한 실측값 1회분. 개인 식별 정보는 담지 않는다. */
 @Serializable
+data class BatteryComparison(
+    val predictedMorningPct: Double?,
+    val endPct: Double?,
+    val stayMinutes: Long,
+    val plannedMinutes: Int = 480,
+    val plannedWakeTime: String? = null,
+)
+
+@Serializable
 data class MeasurementReport(
     val id: String,
     val spotId: String,
@@ -96,7 +107,11 @@ data class MeasurementReport(
     val durationHours: Double,
     val rained: Boolean,
     val createdAt: String = "",
+    val hasEnergyReading: Boolean = true,
+    val batteryComparison: BatteryComparison? = null,
 ) {
+    val validEnergy: Boolean get() = hasEnergyReading && durationHours.isFinite() && durationHours > 0 &&
+        hvacHours in 0.0..durationHours && energyUsedPct in 0.0..100.0
     val drainPerHour: Double get() = if (durationHours > 0) energyUsedPct / durationHours else 0.0
 }
 
@@ -130,6 +145,8 @@ data class CarProfile(
     val efficiencyKmPerKWh: Double = 5.0,
     val fuelTankL: Double = 60.0,
     val fuelKmPerL: Double = 11.0,
+    /** 시험 차종·구동계·배터리·히트펌프 구성이 확인된 경우에만 지정한다. */
+    val hvacPowerProfile: String? = null,
 )
 
 @Serializable

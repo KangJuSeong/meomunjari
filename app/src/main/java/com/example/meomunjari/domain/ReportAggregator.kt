@@ -47,7 +47,7 @@ object ReportAggregator {
         powerType: PowerType?,
     ): ReportSummary {
         val inMonth = reports.filter { it.spotId == spotId && it.month == month }
-        val energy = if (powerType == null) inMonth else inMonth.filter { it.powerType == powerType }
+        val energy = inMonth.filter { it.validEnergy && (powerType == null || it.powerType == powerType) }.distinctBy { it.id }
         return ReportSummary(
             spotId = spotId,
             month = month,
