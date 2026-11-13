@@ -72,13 +72,53 @@ class DemoScenarioTest {
         while (world.chargingStop.value != null && ticks++ < 100) world.tick(1_000)
         assertEquals(stop.station.location, world.location.value)
         assertEquals(spot.id, world.destination.value?.spotId)
-        assertTrue(world.snapshot.value.batteryPct!! > 25f)
+        assertEquals(stop, world.arrivedStop.value)
+        assertEquals(Gear.PARK, world.snapshot.value.gear)
+        val arrivalPct = world.snapshot.value.batteryPct!!
+        world.tick(1_000)
+        assertEquals(arrivalPct, world.snapshot.value.batteryPct!!)
+        world.setCharging(true)
+        world.tick(1_000)
+        assertTrue(world.snapshot.value.batteryPct!! in (arrivalPct + 9f)..(arrivalPct + 11f))
+        world.setCharging(false)
+        val paused = world.snapshot.value.batteryPct!!
+        world.tick(1_000)
+        assertEquals(paused, world.snapshot.value.batteryPct!!)
+        world.setCharging(true)
+        repeat(3) { world.tick(1_000) }
+        assertTrue(world.snapshot.value.batteryPct!! >= stop.targetPct!!)
+        assertEquals(stop.station.location, world.location.value)
+        trip.leaveChargingStop()
+        assertNull(world.arrivedStop.value)
         repeat(40) { world.tick(1_000) }
         assertTrue(Geo.distanceM(world.location.value!!, spot.location) < spot.radiusM)
         assertTrue(trip.navigateTo(spot, stop))
         trip.cancelRoute()
         assertNull(world.chargingStop.value)
         assertNull(world.destination.value)
+    }
+
+    @Test
+    fun leavingEarlyAndCancellingAtStationClearCharging() = runBlocking {
+        val spot = repos.spots.get("s-003")!!
+        val stop = com.example.meomunjari.core.navi.ChargingStop(mockChargingStations.first(), 15, 70)
+        repeat(2) { attempt ->
+            world.setLocation(stop.station.location)
+            trip.navigateTo(spot, stop)
+            world.setAutoDrive(true)
+            world.tick(1_000)
+            assertEquals(stop, trip.arrivedStop.value)
+            world.setCharging(true)
+            if (attempt == 0) {
+                trip.leaveChargingStop()
+                assertEquals(spot.id, world.destination.value?.spotId)
+            } else {
+                trip.cancelRoute()
+                assertNull(world.destination.value)
+            }
+            assertNull(trip.arrivedStop.value)
+            assertEquals(com.example.meomunjari.core.vehicle.ChargeState.IDLE, world.snapshot.value.chargeState)
+        }
     }
 
     @Test

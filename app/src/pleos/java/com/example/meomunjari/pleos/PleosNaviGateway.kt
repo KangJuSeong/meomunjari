@@ -30,6 +30,10 @@ class PleosNaviGateway internal constructor(private val navi: NaviHelper) : Navi
     private val _chargingStop = MutableStateFlow<ChargingStop?>(null)
     override val chargingStop = _chargingStop.asStateFlow()
 
+    private val _arrivedStop = MutableStateFlow<ChargingStop?>(null)
+    override val arrivedStop = _arrivedStop.asStateFlow()
+    override fun leaveChargingStop() { _arrivedStop.value = null }
+
     private val requests = Mutex()
     @Volatile private var connected = false
     private data class Pending(val adding: Boolean, val result: CompletableDeferred<Boolean>)
@@ -45,7 +49,10 @@ class PleosNaviGateway internal constructor(private val navi: NaviHelper) : Navi
         }
 
         override fun onWayPointArrived(info: WaypointArrivedInfo) {
-            if (info.index == WaypointIndex.FIRST) _chargingStop.value = null
+            if (info.index == WaypointIndex.FIRST) {
+                _chargingStop.value?.let { _arrivedStop.value = it }
+                _chargingStop.value = null
+            }
         }
 
         override fun onError(errorCode: NaviErrorCode) {
@@ -54,11 +61,13 @@ class PleosNaviGateway internal constructor(private val navi: NaviHelper) : Navi
         }
         override fun onRouteEnded() {
             _destination.value = null
+            _arrivedStop.value = null
             _chargingStop.value = null
         }
 
         override fun onRouteCancelled() {
             _destination.value = null
+            _arrivedStop.value = null
             _chargingStop.value = null
         }
     }
@@ -78,6 +87,7 @@ class PleosNaviGateway internal constructor(private val navi: NaviHelper) : Navi
         runCatching { navi.removeListener(listener) }
         runCatching { navi.release() }
         _destination.value = null
+        _arrivedStop.value = null
         _chargingStop.value = null
     }
 
@@ -102,6 +112,7 @@ class PleosNaviGateway internal constructor(private val navi: NaviHelper) : Navi
             }
             val ok = withTimeoutOrNull(10_000) { request.result.await() } == true
             if (ok) {
+                _arrivedStop.value = null
                 _destination.value = destination
                 _chargingStop.value = via
             }
@@ -120,6 +131,7 @@ class PleosNaviGateway internal constructor(private val navi: NaviHelper) : Navi
         pending?.result?.complete(false)
         runCatching { navi.cancelRoute() }
         _destination.value = null
+        _arrivedStop.value = null
         _chargingStop.value = null
     }
 

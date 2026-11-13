@@ -10,12 +10,16 @@ data class NaviDestination(
     val address: String = "",
 )
 
-data class ChargingStop(val station: NaviDestination, val minutes: Int)
+data class ChargingStop(val station: NaviDestination, val minutes: Int, val targetPct: Int? = null)
 
 interface NaviGateway {
     val destination: StateFlow<NaviDestination?>
 
     val chargingStop: StateFlow<ChargingStop?>
+
+    /** 경유 도착 후 다음 주행으로 넘어갈 때까지 유지한다. */
+    val arrivedStop: StateFlow<ChargingStop?>
+    fun leaveChargingStop()
 
     fun start()
     fun stop()

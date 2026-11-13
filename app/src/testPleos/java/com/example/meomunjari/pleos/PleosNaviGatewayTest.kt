@@ -55,6 +55,25 @@ class PleosNaviGatewayTest {
     }
 
     @Test
+    fun arrivingAtFirstWaypointKeepsStationUntilDeparture() = runBlocking {
+        val listener = connect()
+        val request = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp, via) }
+        listener.onRoutingCompleted()
+        assertTrue(request.await())
+        val arrival = mock<ai.pleos.playground.navi.data.WaypointArrivedInfo> {
+            on { index } doReturn WaypointIndex.FIRST
+        }
+        listener.onWayPointArrived(arrival)
+        listener.onWayPointArrived(arrival)
+        assertNull(gateway.chargingStop.value)
+        assertEquals(via, gateway.arrivedStop.value)
+        gateway.leaveChargingStop()
+        assertNull(gateway.arrivedStop.value)
+        assertEquals(camp, gateway.destination.value)
+        verify(sdk, never()).cancelRoute()
+    }
+
+    @Test
     fun addingToCurrentRouteRequiresWaypointAcknowledgement() = runBlocking {
         val listener = connect()
         val direct = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp) }

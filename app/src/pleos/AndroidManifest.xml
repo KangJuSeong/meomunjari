@@ -31,6 +31,8 @@
     <uses-permission android:name="pleos.car.permission.CONTROL_CAR_SEATS" />
     <uses-permission android:name="pleos.car.permission.CONTROL_CAR_WINDOWS" />
 
+    <uses-permission android:name="android.car.permission.CAR_ENERGY" />
+
     <!-- AAOS 기어·속도 (Vehicle SDK에 Gear 도메인이 없어 CarPropertyManager로 읽는다) -->
     <uses-permission android:name="android.car.permission.CAR_POWERTRAIN" />
     <uses-permission android:name="android.car.permission.CAR_SPEED" />

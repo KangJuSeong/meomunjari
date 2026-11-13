@@ -81,7 +81,7 @@ object CampingEnergyPlanner {
             if (atStation < 0 || required > 100) return@mapNotNull null
             val target = min(100.0, required + EnergyPredictor.CHARGE_MARGIN_PCT)
             val minutes = ceil((target - atStation) / EnergyPredictor.FAST_CHARGE_PCT_PER_MIN / 5).toInt() * 5
-            ChargingStop(station, minutes.coerceAtLeast(5)) to (firstKm + secondKm)
+            ChargingStop(station, minutes.coerceAtLeast(5), ceil(target).toInt()) to (firstKm + secondKm)
         }.minByOrNull { it.second }?.first
         return CampingEnergyPlan(arrival.coerceAtLeast(0.0), night, morning, low, stop, reserve)
     }

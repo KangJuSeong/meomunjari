@@ -105,6 +105,9 @@ class TripStore(
     private val _destination = MutableStateFlow<Spot?>(null)
     val destination: StateFlow<Spot?> = _destination.asStateFlow()
 
+    val arrivedStop = gateways.navi.arrivedStop
+    fun leaveChargingStop() = gateways.navi.leaveChargingStop()
+
     val chargingStop = gateways.navi.chargingStop
     val route: StateFlow<RouteProgress?> = combine(_destination, gateways.location.location, chargingStop) { spot, loc, via ->
         if (spot == null || loc == null) null
@@ -217,6 +220,16 @@ class TripStore(
         if (loc != null) {
             headingTracker.onLocation(loc, moving = DriveGuard.evaluate(snap) == DriveState.DRIVING)
             _heading.value = headingTracker.headingDeg
+        }
+
+        arrivedStop.value?.let { stop ->
+            // 순정 내비가 경유를 마친 뒤 운전자가 직접 출발한 경우도 처리한다.
+            if (loc != null && Geo.distanceM(loc, stop.station.location) > 300 &&
+                DriveGuard.evaluate(snap) == DriveState.DRIVING) {
+                leaveChargingStop()
+            } else {
+                return
+            }
         }
 
         // 인증 후 멀리 떠나면(차박 중 아님) 인증을 해제한다.
