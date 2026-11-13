@@ -11,7 +11,13 @@
     "energyUsedPct": 14,
     "durationHours": 8.0,
     "rained": false,
-    "createdAt": "2026-11-01"
+    "createdAt": "2026-11-01",
+    "outsideMinC": -1.9,
+    "outsideMaxC": 7.4,
+    "author": "별헌터",
+    "devices": [
+      "LED 랜턴"
+    ]
   },
   {
     "id": "rp-003-02",
@@ -25,7 +31,13 @@
     "energyUsedPct": 13,
     "durationHours": 7.5,
     "rained": false,
-    "createdAt": "2026-11-02"
+    "createdAt": "2025-11-08",
+    "outsideMinC": 2.5,
+    "outsideMaxC": 10.3,
+    "author": "달빛캠퍼",
+    "devices": [
+      "전기장판"
+    ]
   },
   {
     "id": "rp-003-03",
@@ -39,7 +51,11 @@
     "energyUsedPct": 15,
     "durationHours": 8.5,
     "rained": true,
-    "createdAt": "2026-11-03"
+    "createdAt": "2026-11-03",
+    "outsideMinC": -2.7,
+    "outsideMaxC": 3.5,
+    "author": "고원러",
+    "devices": []
   },
   {
     "id": "rp-003-04",
@@ -53,7 +69,14 @@
     "energyUsedPct": 14,
     "durationHours": 8.0,
     "rained": false,
-    "createdAt": "2026-11-04"
+    "createdAt": "2025-11-15",
+    "outsideMinC": 0.6,
+    "outsideMaxC": 6.7,
+    "author": "파도타기",
+    "devices": [
+      "전기장판",
+      "전기포트"
+    ]
   },
   {
     "id": "rp-003-05",
@@ -67,7 +90,13 @@
     "energyUsedPct": 12,
     "durationHours": 7.0,
     "rained": false,
-    "createdAt": "2026-11-05"
+    "createdAt": "2026-11-05",
+    "outsideMinC": 0.0,
+    "outsideMaxC": 9.8,
+    "author": "댕댕이아빠",
+    "devices": [
+      "전기장판"
+    ]
   },
   {
     "id": "rp-003-06",
@@ -81,7 +110,13 @@
     "energyUsedPct": 15,
     "durationHours": 8.5,
     "rained": true,
-    "createdAt": "2026-11-06"
+    "createdAt": "2025-11-22",
+    "outsideMinC": -0.1,
+    "outsideMaxC": 9.0,
+    "author": "몽이네",
+    "devices": [
+      "LED 랜턴"
+    ]
   },
   {
     "id": "rp-003-07",
@@ -95,7 +130,13 @@
     "energyUsedPct": 14,
     "durationHours": 8.0,
     "rained": false,
-    "createdAt": "2026-11-07"
+    "createdAt": "2026-11-07",
+    "outsideMinC": 1.4,
+    "outsideMaxC": 7.9,
+    "author": "북쪽하늘",
+    "devices": [
+      "전기장판"
+    ]
   },
   {
     "id": "rp-003-08",
@@ -109,7 +150,14 @@
     "energyUsedPct": 14,
     "durationHours": 8.0,
     "rained": false,
-    "createdAt": "2026-11-08"
+    "createdAt": "2026-11-08",
+    "outsideMinC": -0.9,
+    "outsideMaxC": 8.1,
+    "author": "아이둘맘",
+    "devices": [
+      "전기포트",
+      "노트북·충전"
+    ]
   },
   {
     "id": "rp-003-09",
@@ -123,7 +171,14 @@
     "energyUsedPct": 13,
     "durationHours": 7.5,
     "rained": false,
-    "createdAt": "2026-11-09"
+    "createdAt": "2026-11-09",
+    "outsideMinC": -1.1,
+    "outsideMaxC": 5.1,
+    "author": "초보차박러",
+    "devices": [
+      "노트북·충전",
+      "LED 랜턴"
+    ]
   },
   {
     "id": "rp-003-10",
@@ -137,7 +192,13 @@
     "energyUsedPct": 16,
     "durationHours": 9.0,
     "rained": true,
-    "createdAt": "2026-11-02"
+    "createdAt": "2025-11-02",
+    "outsideMinC": -0.9,
+    "outsideMaxC": 7.0,
+    "author": "은하수",
+    "devices": [
+      "전기포트"
+    ]
   },
   {
     "id": "rp-003-11",
@@ -151,7 +212,14 @@
     "energyUsedPct": 7,
     "durationHours": 8.0,
     "rained": false,
-    "createdAt": "2026-11-01"
+    "createdAt": "2026-11-10",
+    "outsideMinC": -2.8,
+    "outsideMaxC": 6.1,
+    "author": "새벽안개",
+    "devices": [
+      "전기장판",
+      "LED 랜턴"
+    ]
   },
   {
     "id": "rp-003-12",
@@ -165,7 +233,13 @@
     "energyUsedPct": 6,
     "durationHours": 8.0,
     "rained": false,
-    "createdAt": "2026-11-02"
+    "createdAt": "2026-11-11",
+    "outsideMinC": 1.0,
+    "outsideMaxC": 10.4,
+    "author": "솔바람",
+    "devices": [
+      "전기장판"
+    ]
   },
   {
     "id": "rp-003-13",
@@ -179,7 +253,14 @@
     "energyUsedPct": 9,
     "durationHours": 8.0,
     "rained": false,
-    "createdAt": "2026-10-13"
+    "createdAt": "2026-10-13",
+    "outsideMinC": 4.8,
+    "outsideMaxC": 13.0,
+    "author": "숲속곰",
+    "devices": [
+      "전기장판",
+      "LED 랜턴"
+    ]
   },
   {
     "id": "rp-003-14",
@@ -193,7 +274,13 @@
     "energyUsedPct": 10,
     "durationHours": 8.0,
     "rained": true,
-    "createdAt": "2026-10-14"
+    "createdAt": "2026-10-14",
+    "outsideMinC": 3.3,
+    "outsideMaxC": 11.3,
+    "author": "캠핑요정",
+    "devices": [
+      "캠핑 냉장고"
+    ]
   },
   {
     "id": "rp-003-15",
@@ -207,7 +294,13 @@
     "energyUsedPct": 8,
     "durationHours": 8.0,
     "rained": false,
-    "createdAt": "2026-10-15"
+    "createdAt": "2026-10-15",
+    "outsideMinC": 4.5,
+    "outsideMaxC": 11.8,
+    "author": "차박러버",
+    "devices": [
+      "전기장판"
+    ]
   },
   {
     "id": "rp-001-01",
@@ -221,7 +314,13 @@
     "energyUsedPct": 12,
     "durationHours": 7.5,
     "rained": false,
-    "createdAt": "2026-11-01"
+    "createdAt": "2026-11-01",
+    "outsideMinC": 2.6,
+    "outsideMaxC": 9.3,
+    "author": "별헌터",
+    "devices": [
+      "LED 랜턴"
+    ]
   },
   {
     "id": "rp-001-02",
@@ -235,7 +334,11 @@
     "energyUsedPct": 12,
     "durationHours": 8.0,
     "rained": false,
-    "createdAt": "2026-11-02"
+    "createdAt": "2026-11-02",
+    "outsideMinC": 0.0,
+    "outsideMaxC": 9.3,
+    "author": "달빛캠퍼",
+    "devices": []
   },
   {
     "id": "rp-001-03",
@@ -249,7 +352,11 @@
     "energyUsedPct": 14,
     "durationHours": 8.5,
     "rained": true,
-    "createdAt": "2026-11-03"
+    "createdAt": "2026-11-03",
+    "outsideMinC": 1.9,
+    "outsideMaxC": 11.2,
+    "author": "고원러",
+    "devices": []
   },
   {
     "id": "rp-001-04",
@@ -263,7 +370,14 @@
     "energyUsedPct": 10,
     "durationHours": 6.5,
     "rained": false,
-    "createdAt": "2026-11-04"
+    "createdAt": "2026-11-04",
+    "outsideMinC": 2.0,
+    "outsideMaxC": 11.6,
+    "author": "파도타기",
+    "devices": [
+      "전기장판",
+      "노트북·충전"
+    ]
   },
   {
     "id": "rp-006-01",
@@ -277,7 +391,13 @@
     "energyUsedPct": 17,
     "durationHours": 8.5,
     "rained": false,
-    "createdAt": "2026-10-25"
+    "createdAt": "2025-11-20",
+    "outsideMinC": 2.1,
+    "outsideMaxC": 12.0,
+    "author": "별헌터",
+    "devices": [
+      "LED 랜턴"
+    ]
   },
   {
     "id": "rp-002-01",
@@ -291,7 +411,11 @@
     "energyUsedPct": 11,
     "durationHours": 7.0,
     "rained": false,
-    "createdAt": "2026-11-01"
+    "createdAt": "2026-11-01",
+    "outsideMinC": -1.8,
+    "outsideMaxC": 6.2,
+    "author": "별헌터",
+    "devices": []
   },
   {
     "id": "rp-002-02",
@@ -305,7 +429,11 @@
     "energyUsedPct": 10,
     "durationHours": 6.5,
     "rained": true,
-    "createdAt": "2026-11-02"
+    "createdAt": "2026-11-02",
+    "outsideMinC": 0.9,
+    "outsideMaxC": 10.7,
+    "author": "달빛캠퍼",
+    "devices": []
   },
   {
     "id": "rp-002-03",
@@ -319,7 +447,14 @@
     "energyUsedPct": 12,
     "durationHours": 7.5,
     "rained": false,
-    "createdAt": "2026-11-03"
+    "createdAt": "2026-11-03",
+    "outsideMinC": 1.3,
+    "outsideMaxC": 8.1,
+    "author": "고원러",
+    "devices": [
+      "전기포트",
+      "LED 랜턴"
+    ]
   },
   {
     "id": "rp-007-01",
@@ -333,7 +468,13 @@
     "energyUsedPct": 8,
     "durationHours": 8.0,
     "rained": false,
-    "createdAt": "2026-10-11"
+    "createdAt": "2026-10-11",
+    "outsideMinC": 4.2,
+    "outsideMaxC": 11.4,
+    "author": "별헌터",
+    "devices": [
+      "전기장판"
+    ]
   },
   {
     "id": "rp-007-02",
@@ -347,7 +488,14 @@
     "energyUsedPct": 5,
     "durationHours": 8.0,
     "rained": true,
-    "createdAt": "2026-10-19"
+    "createdAt": "2026-10-19",
+    "outsideMinC": 4.5,
+    "outsideMaxC": 13.8,
+    "author": "달빛캠퍼",
+    "devices": [
+      "전기장판",
+      "캠핑 냉장고"
+    ]
   },
   {
     "id": "rp-008-01",
@@ -361,6 +509,10 @@
     "energyUsedPct": 19,
     "durationHours": 9.0,
     "rained": false,
-    "createdAt": "2026-10-27"
+    "createdAt": "2026-10-27",
+    "outsideMinC": 1.1,
+    "outsideMaxC": 8.9,
+    "author": "별헌터",
+    "devices": []
   }
 ]

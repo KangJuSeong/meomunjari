@@ -36,6 +36,8 @@
     <!-- AAOS 기어·속도 (Vehicle SDK에 Gear 도메인이 없어 CarPropertyManager로 읽는다) -->
     <uses-permission android:name="android.car.permission.CAR_POWERTRAIN" />
     <uses-permission android:name="android.car.permission.CAR_SPEED" />
+    <!-- 외기 온도 (ENV_OUTSIDE_TEMPERATURE) -->
+    <uses-permission android:name="android.car.permission.CAR_EXTERIOR_ENVIRONMENT" />
 
     <application>
         <uses-library

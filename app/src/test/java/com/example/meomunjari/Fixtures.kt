@@ -83,6 +83,8 @@ object Fixtures {
         vehicleClass = VehicleClass.valueOf(o.s("vehicleClass")!!), minCabinTempC = o.d("minCabinTempC")!!,
         avgCabinTempC = o.d("avgCabinTempC"), hvacHours = o.d("hvacHours")!!, energyUsedPct = o.d("energyUsedPct")!!,
         durationHours = o.d("durationHours")!!, rained = o.b("rained")!!, createdAt = o.s("createdAt").orEmpty(),
+        author = o.s("author").orEmpty(), outsideMinC = o.d("outsideMinC"), outsideMaxC = o.d("outsideMaxC"),
+        devices = o.strings("devices"),
     )
 
     private fun preset(o: JsonObject) = SettingPreset(

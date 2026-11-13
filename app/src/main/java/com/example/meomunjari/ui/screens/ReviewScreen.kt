@@ -84,13 +84,17 @@ fun ReviewScreen(onDone: () -> Unit) {
                     if (r == null) {
                         Text("기록에 동의하지 않았거나 샘플이 부족해 리포트를 만들지 않았어요.", style = MaterialTheme.typography.bodyLarge)
                     } else {
-                        KeyValue("새벽 실내 최저", "${r.minCabinTempC}°C")
-                        KeyValue("평균 실내", "${r.avgCabinTempC ?: "-"}°C")
-                        KeyValue("공조 사용", "${r.hvacHours}시간")
-                        KeyValue("${r.powerType.energyLabel} 소모", "${r.energyUsedPct}% (${r.durationHours}시간)")
-                        KeyValue("비", if (r.rained) "왔어요 (와이퍼 작동)" else "안 왔어요")
+                        KeyValue("방문 일자", r.visitDate?.let { "${it.monthValue}월 ${it.dayOfMonth}일" } ?: r.createdAt)
+                        KeyValue(
+                            "외부 최저·최고",
+                            if (r.outsideMinC != null && r.outsideMaxC != null) "${r.outsideMinC}~${r.outsideMaxC}°C" else "측정 안 됨",
+                        )
+                        KeyValue("실내 온도", r.avgCabinTempC?.let { "$it°C" } ?: "-")
+                        KeyValue("${r.powerType.energyLabel} 소모", "${r.energyUsedPct}%")
+                        KeyValue("차박 시간", "${r.durationHours}시간")
+                        KeyValue("외부 기기", r.devices.ifEmpty { listOf("없음") }.joinToString(", "))
                         Text(
-                            "리뷰 옆에 자동으로 붙고, 스팟의 ${r.month}월 리포트에 익명 집계로 더해져요." +
+                            "리뷰 옆에 자동으로 붙고, 같은 시기에 이곳을 찾는 사람들의 리포트 목록에 보여요." +
                                 if (f.creditsEarned == 2) " 이 계절 첫 기록이라 기록왕 2배!" else "",
                             style = MaterialTheme.typography.bodySmall,
                             color = MColors.Teal,

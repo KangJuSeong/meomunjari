@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.max
 
@@ -52,6 +54,7 @@ class SimulatedWorld(
             batteryPct = 64f,
             efficiencyKmPerKWh = 5.1f,
             cabinTempC = 15f,
+            outsideTempC = 7f,
             hvacOn = false,
             hvacPowerKnown = true,
             hvacTargetC = 21f,
@@ -83,6 +86,15 @@ class SimulatedWorld(
     private var job: Job? = null
     private var driveStepM = 0.0
 
+    /** 시뮬레이션이 흐른 시간(분). 밤사이 외기 온도 변화를 만든다. */
+    private var simElapsedMin = 0.0
+
+    /**
+     * 콘솔에서 정한 외기 온도를 저녁 기온으로 보고, 밤이 깊을수록 최대 4°C 내려간다(12시간 주기 최저).
+     */
+    private fun outsideNow(): Float =
+        (_outside.value - 4.0 * (1 - cos(2 * PI * simElapsedMin / 1_440.0)) / 2).toFloat()
+
     override fun start() {
         if (job != null) return
         job = scope.launch {
@@ -101,12 +113,14 @@ class SimulatedWorld(
     /** realMs 동안의 변화. timeScale만큼 시간이 빨리 흐른다. */
     internal fun tick(realMs: Long) {
         val simMinutes = realMs / 60_000.0 * timeScale.value.coerceAtLeast(1)
+        simElapsedMin += simMinutes
+        val outsideC = outsideNow()
         if (_autoDrive.value) driveTowardDestination()
 
         _snapshot.update { s ->
             var battery = s.batteryPct ?: 0f
             if (s.hvacOn) {
-                val outside = _outside.value
+                val outside = outsideC
                 val target = s.hvacTargetC ?: 21f
                 // 외기와 목표 온도 차이가 클수록 많이 쓴다. 7°C → 21°C 에서 약 1.9%/h.
                 val drainPerHour = 0.8 + 0.08 * abs(target - outside)
@@ -114,14 +128,15 @@ class SimulatedWorld(
             }
             val charging = s.chargeState == ChargeState.CHARGING && _arrivedStop.value != null && s.gear == Gear.PARK
             if (charging) battery += (simMinutes * EnergyPredictor.FAST_CHARGE_PCT_PER_MIN).toFloat()
-            val cabin = s.cabinTempC ?: _outside.value
-            val goal = if (s.hvacOn) s.hvacTargetC ?: cabin else _outside.value + if (s.windowOpenPct > 0) 0f else 3f
+            val cabin = s.cabinTempC ?: outsideC
+            val goal = if (s.hvacOn) s.hvacTargetC ?: cabin else outsideC + if (s.windowOpenPct > 0) 0f else 3f
             val tau = if (s.hvacOn) 15.0 else 90.0
             val k = 1 - exp(-simMinutes / tau)
             s.copy(
                 batteryPct = battery.coerceIn(0f, 100f),
                 chargeState = if (charging && battery >= 100f) ChargeState.FULL else s.chargeState,
                 cabinTempC = (cabin + (goal - cabin) * k).toFloat(),
+                outsideTempC = outsideC,
             )
         }
     }
@@ -250,6 +265,8 @@ class SimulatedWorld(
     override fun setCabinTemp(celsius: Float) = _snapshot.update { it.copy(cabinTempC = celsius) }
     override fun setOutsideTemp(celsius: Float) {
         _outside.value = celsius
+        simElapsedMin = 0.0
+        _snapshot.update { it.copy(outsideTempC = celsius) }
     }
 
     override fun setWiper(active: Boolean) = _snapshot.update { it.copy(wiperActive = active) }

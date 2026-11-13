@@ -312,7 +312,12 @@ class TripStore(
 
     fun setConsent(consent: Boolean) = repos.user.update { it.copy(consentToRecord = consent) }
 
-    suspend fun startCamping(preset: SettingPreset, includeDoor: Boolean, loadedPresetId: String? = null): StartCampingResult {
+    suspend fun startCamping(
+        preset: SettingPreset,
+        includeDoor: Boolean,
+        loadedPresetId: String? = null,
+        devices: List<String> = emptyList(),
+    ): StartCampingResult {
         if (!DriveGuard.canControl(vehicle.value)) return StartCampingResult.NotParked
         val visit = _certifiedVisit.value ?: return StartCampingResult.NoSpot
         val spot = repos.spots.get(visit.spotId) ?: return StartCampingResult.NoSpot
@@ -346,6 +351,7 @@ class TripStore(
             plannedMinutes = plannedMinutes,
             wakeAt = wakeAt,
             startedAt = startTime,
+            devices = devices,
         )
         _camping.value = state
         _finished.value = null
@@ -402,7 +408,7 @@ class TripStore(
             PowerType.EV -> snap.batteryPct
             PowerType.ICE -> snap.fuelPct
         }
-        return CampingSample(elapsedMs, snap.cabinTempC, energy, snap.hvacOn, snap.wiperActive)
+        return CampingSample(elapsedMs, snap.cabinTempC, energy, snap.hvacOn, snap.wiperActive, snap.outsideTempC)
     }
 
     fun endCamping(): FinishedCamping? {
@@ -424,6 +430,8 @@ class TripStore(
                 car = userBefore.car,
                 month = date.monthValue,
                 createdAt = date.toString(),
+                author = userBefore.nickname,
+                devices = state.devices,
             )?.copy(batteryComparison = comparison)
         } else {
             null

@@ -12,6 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import com.example.meomunjari.data.mock.toRepositories
 import org.junit.Test
 
 class DomainTest {
@@ -134,5 +135,53 @@ class DomainTest {
         assertEquals(13.9, r.energyUsedPct, 0.1)
         assertEquals(18.3, r.minCabinTempC, 0.05)
         assertTrue(r.rained)
+    }
+
+    @Test
+    fun reportCarriesOutsideRangeDevicesAndLine() {
+        val spot = seed.spots.first { it.id == "s-003" }
+        val step = CampingRecorder.SAMPLE_INTERVAL_SIM_MS
+        val samples = (0..54).map { i ->
+            CampingSample(i * step, 21f, 62f - i * 0.25f, hvacOn = true, wiperActive = false, outsideTempC = 6f - i * 0.15f)
+        }
+        val r = CampingRecorder.buildReport("r", spot, samples, seed.user.car, 11, "2026-11-08", author = "주성", devices = listOf("전기장판"))!!
+        assertEquals(6.0, r.outsideMaxC!!, 0.01)
+        assertEquals(-2.1, r.outsideMinC!!, 0.01)
+        assertEquals(listOf("전기장판"), r.devices)
+        assertEquals("11월 8일 · 외부 −2~6°C · 실내 21°C · 배터리 −14% · 9시간 · 전기장판", r.summaryLine())
+        assertTrue(r.summaryLine(java.time.LocalDate.of(2027, 11, 13)).startsWith("2026년 11월 8일 · "))
+        assertEquals("외부 −2~6°C · 실내 21°C · 배터리 −14% · 9시간", r.valuesLine())
+    }
+
+    @Test
+    fun nearReportsUseTwoWeeksAroundTodayIgnoringYear() {
+        val today = java.time.LocalDate.of(2026, 11, 13)
+        val near = ReportAggregator.near(seed.reports, "s-003", today)
+        val dates = near.map { it.createdAt }
+        // 작년 같은 시기(2025-11-08, -15, -22, -02)도 들어오고, 10월 13~15일(29일 이상 차이)은 빠진다.
+        assertTrue("2025-11-15" in dates)
+        assertTrue("2025-11-22" in dates)
+        assertFalse(dates.any { it.startsWith("2026-10") })
+        assertEquals(12, near.size)
+        // 오늘과 날짜가 가까운 순
+        assertEquals(listOf("2026-11-11", "2025-11-15", "2026-11-10"), dates.take(3))
+
+        // 연말·연초를 넘어가는 경우
+        assertEquals(3, ReportAggregator.dayGap(java.time.LocalDate.of(2025, 12, 30), java.time.LocalDate.of(2026, 1, 2)))
+
+        val s = ReportAggregator.summarizeNear(seed.reports, "s-003", today, PowerType.EV)
+        assertEquals(12, s.sampleCount)
+        assertEquals(near.mapNotNull { it.outsideMinC }.min(), s.minOutsideC!!, 0.001)
+    }
+
+    @Test
+    fun oneReportPerUserPerSpot() {
+        val repos = Fixtures.seed().toRepositories()
+        val before = repos.reports.forSpot("s-003").size
+        val base = repos.reports.forSpot("s-003").first { it.author == "별헌터" }
+        repos.reports.add(base.copy(id = "new", createdAt = "2026-11-12"))
+        val mine = repos.reports.forSpot("s-003").filter { it.author == "별헌터" }
+        assertEquals(before, repos.reports.forSpot("s-003").size)
+        assertEquals(listOf("new"), mine.map { it.id })
     }
 }

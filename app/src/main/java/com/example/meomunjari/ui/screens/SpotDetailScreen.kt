@@ -1,6 +1,9 @@
 package com.example.meomunjari.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.meomunjari.core.Geo
+import com.example.meomunjari.core.model.MeasurementReport
 import com.example.meomunjari.core.model.Review
 import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.model.Spot
@@ -63,7 +67,6 @@ import com.example.meomunjari.ui.components.SectionCard
 import com.example.meomunjari.ui.components.SpotPhoto
 import com.example.meomunjari.ui.components.TagChip
 import com.example.meomunjari.ui.theme.MColors
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -78,8 +81,8 @@ import java.time.LocalDate
 data class SpotDetailUi(
     val spot: Spot? = null,
     val reviews: List<Review> = emptyList(),
-    val month: Int = LocalDate.now().monthValue,
-    val months: List<Int> = emptyList(),
+    /** 오늘 기준 앞뒤 2주 안의 실측 리포트 (가까운 날짜 순). */
+    val nearReports: List<MeasurementReport> = emptyList(),
     val summary: ReportSummary? = null,
     val forecast: EnergyForecast? = null,
     val comparison: DepartureComparison? = null,
@@ -91,8 +94,6 @@ data class SpotDetailUi(
 )
 
 class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewModel() {
-    private val month = MutableStateFlow(LocalDate.now().monthValue)
-
     private val base = combine(c.repos.spots.spots, c.repos.reviews.reviews, c.repos.reports.reports, c.repos.presets.presets, c.repos.user.user) { spots, reviews, reports, presets, user ->
         Base(spots.firstOrNull { it.id == spotId }, spots, reviews, reports, presets, user)
     }
@@ -104,11 +105,14 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
             delay((60 - now.second) * 1000L)
         }
     }
-    private val schedule = combine(month, c.trip.wakeTime, localMinute) { m, wake, now -> Triple(m, wake, now) }
+    private val schedule = combine(c.trip.wakeTime, localMinute) { wake, now -> wake to now }
 
-    val ui: StateFlow<SpotDetailUi> = combine(base, c.trip.vehicle, c.trip.location, schedule, c.trip.destination) { b, vehicle, loc, (m, wake, now), dest ->
+    val ui: StateFlow<SpotDetailUi> = combine(base, c.trip.vehicle, c.trip.location, schedule, c.trip.destination) { b, vehicle, loc, (wake, now), dest ->
         val spot = b.spot ?: return@combine SpotDetailUi()
-        val summary = ReportAggregator.summarize(b.reports, spot.id, m, b.user.car.powerType)
+        val today = LocalDate.now()
+        val m = today.monthValue
+        val near = ReportAggregator.near(b.reports, spot.id, today)
+        val summary = ReportAggregator.summarizeNear(b.reports, spot.id, today, b.user.car.powerType)
         val distance = loc?.let { Geo.distanceM(it, spot.location) }
         val isEv = b.user.car.powerType == PowerType.EV
         val comparison = if (isEv && vehicle.connected && loc != null && vehicle.batteryPct != null) {
@@ -129,8 +133,7 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
         SpotDetailUi(
             spot = spot,
             reviews = b.reviews.filter { it.spotId == spot.id }.sortedByDescending { it.createdAt },
-            month = m,
-            months = (ReportAggregator.monthsWithData(b.reports, spot.id) + LocalDate.now().monthValue).distinct().sorted(),
+            nearReports = near,
             summary = summary,
             forecast = forecast,
             comparison = comparison,
@@ -141,10 +144,6 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
             isDestination = dest?.id == spot.id,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SpotDetailUi())
-
-    fun selectMonth(m: Int) {
-        month.value = m
-    }
 
     private data class Base(
         val spot: Spot?,
@@ -190,29 +189,35 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit) {
             LazyColumn(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item {
                     val s = ui.summary
+                    val today = LocalDate.now()
                     SectionCard(
-                        title = "차가 직접 기록한 ${ui.month}월 밤",
+                        title = "차가 직접 기록한 같은 시기의 밤",
                         trailing = {
-                            if (s != null && !s.isEmpty) {
-                                Pill(if (s.reliable) "기록 ${s.sampleCount}회" else "참고치 · ${s.sampleCount}회", if (s.reliable) MColors.Blue else MColors.Orange)
-                            }
+                            Pill(
+                                "${today.monthValue}월 ${today.dayOfMonth}일 앞뒤 2주 · ${ui.nearReports.size}개",
+                                if (s != null && s.reliable) MColors.Blue else MColors.Orange,
+                            )
                         },
                     ) {
-                        ChipFlow {
-                            ui.months.forEach { m -> TagChip("${m}월", selected = m == ui.month, onClick = { vm.selectMonth(m) }) }
-                        }
                         if (s == null || s.isEmpty) {
-                            Text("${ui.month}월 기록이 아직 없어요. 첫 기록을 남기면 기록왕 2배!", style = MaterialTheme.typography.bodyLarge, color = MColors.Grey500)
+                            Text("앞뒤 2주 안에 남겨진 리포트가 아직 없어요. 첫 기록을 남기면 기록왕 2배!", style = MaterialTheme.typography.bodyLarge, color = MColors.Grey500)
                         } else {
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                StatTile("새벽 실내 최저", s.minCabinTempC?.let { "${it.roundToInt()}°C" } ?: "-", Modifier.weight(1f))
+                                StatTile("외부 최저", s.minOutsideC?.let { "${it.roundToInt()}°C" } ?: "-", Modifier.weight(1f))
                                 StatTile(
-                                    "공조 ${s.avgHvacHours?.roundToInt() ?: "-"}시간",
+                                    "${s.powerType?.energyLabel ?: "배터리"} 평균 소모",
                                     s.avgEnergyUsedPct?.let { "−${it.roundToInt()}%" } ?: "-",
                                     Modifier.weight(1f),
                                     accent = MColors.Blue,
                                 )
-                                StatTile("비 온 날", "${s.rainyCount}회", Modifier.weight(1f))
+                                StatTile("평균 차박", s.avgDurationHours?.let { "${it.roundToInt()}시간" } ?: "-", Modifier.weight(1f))
+                            }
+                            ui.nearReports.take(MAX_REPORT_ROWS).forEachIndexed { i, r ->
+                                if (i > 0) ThinDivider()
+                                ReportRow(r, today)
+                            }
+                            if (ui.nearReports.size > MAX_REPORT_ROWS) {
+                                Text("외 ${ui.nearReports.size - MAX_REPORT_ROWS}개", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
                             }
                         }
                         Text("사람이 입력한 값이 아니에요. 다녀간 차가 밤새 자동으로 남긴 기록이에요.", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
@@ -340,6 +345,41 @@ fun ReviewCard(review: Review) {
             Text(review.createdAt, style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
             if (review.tags.isNotEmpty()) Text(review.tags.joinToString(" "), style = MaterialTheme.typography.bodySmall, color = MColors.Blue)
             if (review.reportId != null) Text("실측 리포트 첨부", style = MaterialTheme.typography.bodySmall, color = MColors.Purple)
+        }
+    }
+}
+
+private const val MAX_REPORT_ROWS = 6
+
+/** 실측 리포트 한 줄: 왼쪽에 방문 날짜, 오른쪽에 측정값과 작성자·차급·외부 기기. */
+@Composable
+private fun ReportRow(r: MeasurementReport, today: LocalDate) {
+    val date = r.visitDate
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Column(Modifier.width(72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(date?.let { "${it.monthValue}.${it.dayOfMonth}" } ?: "-", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = MColors.Text)
+            Text(
+                if (date != null && date.year != today.year) "${date.year}년" else "올해",
+                fontSize = 13.sp,
+                color = MColors.Grey500,
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(r.valuesLine(), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MColors.Text)
+            Text(
+                listOfNotNull(
+                    r.author.takeIf { it.isNotBlank() }?.let { "${it}님" },
+                    r.vehicleClass.label,
+                    r.devices.takeIf { it.isNotEmpty() }?.joinToString(", "),
+                    if (r.rained) "비 온 밤" else null,
+                ).joinToString(" · "),
+                fontSize = 15.sp,
+                color = MColors.Grey500,
+            )
         }
     }
 }

@@ -18,6 +18,7 @@ data class CampingSample(
     val energyPct: Float?,
     val hvacOn: Boolean,
     val wiperActive: Boolean,
+    val outsideTempC: Float? = null,
 )
 
 data class CampingState(
@@ -27,6 +28,8 @@ data class CampingState(
     val preset: SettingPreset,
     val applyResults: List<ApplyItemResult>,
     val recording: Boolean,
+    /** 차박 시작 때 고른 외부 기기. 리포트에 그대로 담긴다. */
+    val devices: List<String> = emptyList(),
     val samples: List<CampingSample> = emptyList(),
     val elapsedSimMs: Long = 0,
     val protectionThresholdPct: Int = 20,
@@ -50,6 +53,11 @@ data class FinishedCamping(
     val batteryComparison: BatteryComparison? = null,
 )
 
+/** 차박 시작 때 고를 수 있는 외부 기기. */
+object ExternalDevices {
+    val ALL = listOf("전기장판", "캠핑 냉장고", "전기포트", "노트북·충전", "LED 랜턴", "휴대용 선풍기")
+}
+
 object CampingRecorder {
     /** 10분마다 기록. */
     const val SAMPLE_INTERVAL_SIM_MS = 10 * 60 * 1000L
@@ -62,6 +70,8 @@ object CampingRecorder {
         car: CarProfile,
         month: Int,
         createdAt: String,
+        author: String = "",
+        devices: List<String> = emptyList(),
     ): MeasurementReport? {
         if (samples.size < 2) return null
         val temps = samples.mapNotNull { it.cabinTempC?.toDouble() }
@@ -81,6 +91,7 @@ object CampingRecorder {
         val hvacHours = samples.zipWithNext().sumOf { (a, b) ->
             if (b.hvacOn) (b.simTimeMs - a.simTimeMs) / 3_600_000.0 else 0.0
         }
+        val outside = samples.mapNotNull { it.outsideTempC?.toDouble() }
 
         return MeasurementReport(
             id = id,
@@ -96,6 +107,10 @@ object CampingRecorder {
             durationHours = durationH.round1(),
             rained = samples.any { it.wiperActive },
             createdAt = createdAt,
+            author = author,
+            outsideMinC = outside.minOrNull()?.round1(),
+            outsideMaxC = outside.maxOrNull()?.round1(),
+            devices = devices,
         )
     }
 
