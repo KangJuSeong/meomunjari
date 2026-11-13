@@ -30,7 +30,6 @@ fun ChargingScreen(stop: ChargingStop, spot: Spot) {
     val vehicle by c.trip.vehicle.collectAsStateWithLifecycle()
     val wake by c.trip.wakeTime.collectAsStateWithLifecycle()
     val user by c.repos.user.user.collectAsStateWithLifecycle()
-    val reports by c.repos.reports.reports.collectAsStateWithLifecycle()
     val now by produceState(LocalDateTime.now()) {
         while (true) {
             value = LocalDateTime.now()
@@ -39,10 +38,10 @@ fun ChargingScreen(stop: ChargingStop, spot: Spot) {
     }
     val from = stop.station.location
     val arrival = now.plusMinutes(RouteProgress.estimate(from, spot).remainingMin.toLong())
-    val records = CampingEnergyPlanner.matchingReports(reports, spot, arrival.monthValue)
-    val night = CampingEnergyPlanner.estimateNight(spot, arrival.toLocalTime(), records,
+    val setting = user.mySetting
+    val night = CampingEnergyPlanner.estimateNight(spot, arrival.toLocalTime(), user.car, setting.targetTempC, setting.hvacOn,
         stayMinutes = WakeSchedule.stayMinutes(arrival.toLocalTime(), wake))
-    val pct = vehicle.batteryPct?.takeIf { it in 0f..100f }
+    val pct = vehicle.batteryPct?.takeIf { vehicle.connected && it in 0f..100f }
     val plan = pct?.let {
         CampingEnergyPlanner.plan(it.toDouble(), from, spot, user.car, vehicle.efficiencyKmPerKWh?.toDouble(),
             night, emptyList())
@@ -64,23 +63,24 @@ fun ChargingScreen(stop: ChargingStop, spot: Spot) {
             SectionCard(Modifier.weight(1f), title = "배터리") {
                 Text(pct?.let { "${it.roundToInt()}%" } ?: "잔량 확인 중", style = MaterialTheme.typography.displayMedium)
                 pct?.let { ProgressBar(it / 100f, MColors.Blue) }
-                KeyValue("권장 출발 잔량", target?.let { "$it%" } ?: "확인 중")
+                KeyValue("경유 계획 목표 잔량", target?.let { "$it%" } ?: "확인 중")
                 if (ready) {
-                    Text("차박지로 출발할 만큼 충전됐어요.", color = MColors.Teal)
+                    Text("경유 계획의 목표 잔량에 도달했어요.", color = MColors.Teal)
                 } else if (target != null && pct != null && charging) {
                     val minutes = ceil((target - pct) / EnergyPredictor.FAST_CHARGE_PCT_PER_MIN).toInt()
-                    KeyValue("권장 잔량까지 · 계획 기준", "약 ${minutes}분")
+                    KeyValue("목표 잔량까지 · 계획 기준", "약 ${minutes}분")
                 }
             }
             SectionCard(Modifier.weight(1f), title = "지금 출발하면") {
                 KeyValue("차박지 도착 잔량", plan?.let { "${it.arrivalPct.roundToInt()}%" } ?: "확인 중")
                 KeyValue(wake?.let { "$it 기상 예상 잔량" } ?: "8시간 뒤 예상 잔량",
-                    plan?.morningPct?.let { "${it.roundToInt()}%" } ?: if (records.size < 2) "측정중" else "예측 자료 부족")
+                    plan?.morningPct?.let { "${it.roundToInt()}%" } ?: if (pct == null) "잔량 확인 중" else "예측 자료 부족")
                 if (plan?.morningPct != null) Text(
                     if (plan.requiresCharge) "기상 후 인근 충전소까지 갈 여유가 부족해요."
                     else "기상 후 인근 충전소까지 갈 여유가 있어요.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                Text(energyBasisText(setting.hvacOn), style = MaterialTheme.typography.bodySmall)
             }
         }
         c.gateways.console?.let { console ->

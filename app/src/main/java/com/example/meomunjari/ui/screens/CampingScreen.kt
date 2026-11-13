@@ -34,7 +34,6 @@ import com.example.meomunjari.ui.components.PrimaryButton
 import com.example.meomunjari.ui.components.ScreenHeader
 import com.example.meomunjari.core.model.PowerType
 import com.example.meomunjari.domain.CampingEnergyPlanner
-import java.time.LocalDate
 import com.example.meomunjari.ui.components.SectionCard
 import com.example.meomunjari.ui.components.Sparkline
 import com.example.meomunjari.ui.components.StatTile
@@ -51,7 +50,6 @@ fun CampingScreen(onFinished: () -> Unit) {
     val camping by trip.camping.collectAsStateWithLifecycle()
     val vehicle by trip.vehicle.collectAsStateWithLifecycle()
     val scale by trip.timeScale.collectAsStateWithLifecycle()
-    val reports by c.repos.reports.reports.collectAsStateWithLifecycle()
     val user by c.repos.user.user.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -132,17 +130,19 @@ fun CampingScreen(onFinished: () -> Unit) {
             Column(Modifier.weight(0.8f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 if (user.car.powerType == PowerType.EV) {
                     SectionCard(title = "아침 예상 잔량") {
-                        val records = CampingEnergyPlanner.matchingReports(reports, state.spot,
-                            state.visit?.month ?: LocalDate.now().monthValue)
-                        val night = CampingEnergyPlanner.estimateNight(state.spot, state.startedAt, records,
-                            state.elapsedHours, vehicle.hvacOn.takeIf { hvacKnown }, state.protectionTriggered && hvacKnown && !vehicle.hvacOn, state.plannedMinutes)
-                        val pct = vehicle.batteryPct
+                        val night = if (hvacKnown) CampingEnergyPlanner.estimateNight(
+                            state.spot, state.startedAt, user.car, vehicle.hvacTargetC?.toDouble(), vehicle.hvacOn,
+                            elapsedHours = state.elapsedHours, stayMinutes = state.plannedMinutes,
+                        ) else null
+                        val pct = vehicle.batteryPct?.takeIf { vehicle.connected && it in 0f..100f }
                         Text(when {
                             state.elapsedSimMs >= state.plannedMinutes * 60_000L -> "예정한 기상 시간이 지났어요"
-                            records.size < 2 -> "측정중 · EV 기록 ${records.size}/2건"
-                            night == null || pct == null -> "기온 또는 차량 잔량을 확인하고 있어요"
+                            !hvacKnown || pct == null -> "차량 배터리와 공조 상태를 확인하고 있어요"
+                            night == null -> "현재 조건의 야간 전력 자료가 부족해요"
                             else -> "${Math.round((pct - night.drainPct).coerceAtLeast(0.0))}% · ${state.wakeAt?.let { "$it 기상 기준" } ?: "차박 시작 8시간 기준"}"
                         })
+                        if (hvacKnown && state.elapsedSimMs < state.plannedMinutes * 60_000L)
+                            Text(energyBasisText(vehicle.hvacOn), style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 SectionCard(title = "배터리 지킴이") {

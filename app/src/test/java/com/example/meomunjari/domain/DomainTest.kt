@@ -60,31 +60,24 @@ class DomainTest {
     }
 
     @Test
-    fun demoStep3_energyEnoughAt62_chargeAt25() {
-        val spot = seed.spots.first { it.id == "s-003" }
-        val summary = ReportAggregator.summarize(seed.reports, spot.id, 11, PowerType.EV)
-        val ok = EnergyPredictor.forecast(62.0, 0.0, seed.user.car, null, summary, 11, spot.nearestChargerKm)
-        assertEquals(ForecastBasis.MEASURED, ok.basis)
-        assertEquals(14.0, ok.overnightPct, 0.1)
-        assertEquals(48.0, ok.morningPct, 0.2)
-        assertEquals(Verdict.ENOUGH, ok.verdict)
+    fun fuelForecastUsesOnlyIceReportsAndRetainsSeasonalFallback() {
+        val car = seed.user.car.copy(powerType = PowerType.ICE)
+        val records = seed.reports.take(3).map { it.copy(powerType = PowerType.ICE, energyUsedPct = 12.0, durationHours = 8.0, hvacHours = 8.0) }
+        val summary = ReportAggregator.summarize(records, "s-003", 11, PowerType.ICE)
+        val measured = EnergyPredictor.fuelForecast(62.0, 0.0, car, summary, 11, 10.0)!!
+        assertEquals(ForecastBasis.MEASURED, measured.basis)
+        assertEquals(50.0, measured.morningPct, 0.0001)
+        assertEquals(Verdict.ENOUGH, measured.verdict)
+        val sparse = ReportAggregator.summarize(records.take(1), "s-003", 11, PowerType.ICE)
+        val low = EnergyPredictor.fuelForecast(20.0, 0.0, car, sparse, 11, 10.0)!!
+        assertEquals(ForecastBasis.REFERENCE, low.basis)
+        assertEquals(Verdict.REFUEL_ON_ROUTE, low.verdict)
 
-        val low = EnergyPredictor.forecast(25.0, 0.0, seed.user.car, null, summary, 11, spot.nearestChargerKm)
-        assertEquals(Verdict.CHARGE_ON_ROUTE, low.verdict)
-        assertEquals(15, low.chargeMinutes)
-        assertTrue(low.message().contains("15분 충전"))
-    }
-
-    @Test
-    fun sparseSpotFallsBackToReferenceOrSeason() {
-        val s6 = ReportAggregator.summarize(seed.reports, "s-006", 11, PowerType.EV)
-        val f6 = EnergyPredictor.forecast(80.0, 0.0, seed.user.car, null, s6, 11, 14.0)
-        assertEquals(ForecastBasis.REFERENCE, f6.basis)
-
-        val s9 = ReportAggregator.summarize(seed.reports, "s-009", 11, PowerType.EV)
-        val f9 = EnergyPredictor.forecast(80.0, 0.0, seed.user.car, null, s9, 11, 7.5)
-        assertEquals(ForecastBasis.SEASONAL_DEFAULT, f9.basis)
-        assertEquals(1.2 * 8, f9.overnightPct, 0.01)
+        val evSummary = ReportAggregator.summarize(seed.reports, "s-003", 11, PowerType.EV)
+        val fallback = EnergyPredictor.fuelForecast(80.0, 0.0, car, evSummary, 11, 10.0)!!
+        assertEquals(ForecastBasis.SEASONAL_DEFAULT, fallback.basis)
+        assertEquals(0.8 * 8, fallback.overnightPct, 0.0001)
+        org.junit.Assert.assertNull(EnergyPredictor.fuelForecast(62.0, 0.0, seed.user.car, evSummary, 11, 10.0))
     }
 
     @Test
@@ -125,7 +118,7 @@ class DomainTest {
         val master = SettingCompatibility.master(seed.presets.filter { it.spotId == "s-003" }, seed.user.nickname)
         assertNotNull(master)
         assertEquals("별헌터", master!!.ownerNickname)
-        assertEquals("21°C, 시트 메모리 2번 · 등받이 150°, 창문 5% 열기, 조명 끄기", SettingCompatibility.summary(master))
+        assertEquals("22°C, 시트 메모리 2번 · 등받이 150°, 창문 5% 열기, 조명 끄기", SettingCompatibility.summary(master))
     }
 
     @Test

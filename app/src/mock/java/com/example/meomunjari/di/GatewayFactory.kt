@@ -18,8 +18,9 @@ object GatewayFactory {
         scope: CoroutineScope,
         timeScale: StateFlow<Int>,
         spotsProvider: () -> List<Spot>,
+        batteryKWh: Double,
     ): Gateways {
-        val world = SimulatedWorld(scope, timeScale, spotsProvider)
+        val world = SimulatedWorld(scope, timeScale, spotsProvider, batteryKWh)
         return Gateways(
             vehicle = world,
             location = world,

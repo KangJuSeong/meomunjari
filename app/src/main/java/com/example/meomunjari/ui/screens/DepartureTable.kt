@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.domain.DepartureComparison
 import com.example.meomunjari.domain.RouteEstimate
 import com.example.meomunjari.ui.components.ThinDivider
@@ -17,11 +18,12 @@ import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
 
 @Composable
-internal fun DepartureTable(comparison: DepartureComparison, wake: LocalTime?) {
+internal fun DepartureTable(comparison: DepartureComparison, wake: LocalTime?, setting: SettingPreset) {
     val direct = comparison.direct
     val via = comparison.via
     val stop = comparison.stop
-    Text("${comparison.departure.toLocalTime()} 출발 기준", style = MaterialTheme.typography.bodySmall)
+    val climate = if (setting.hvacOn) "공조 ${setting.targetTempC.roundToInt()}°C" else "공조 끔"
+    Text("${comparison.departure.toLocalTime()} 출발 · 내 기본 세팅 $climate", style = MaterialTheme.typography.bodySmall)
     ComparisonRow("", "직행", "충전소 경유", emphasis = true)
     ThinDivider()
     fun eta(route: RouteEstimate): String = when {
@@ -36,8 +38,7 @@ internal fun DepartureTable(comparison: DepartureComparison, wake: LocalTime?) {
         !route.reachable -> "도달 어려움"
         route.stayMinutes < 0 -> "기상 후 도착"
         route.morningPct != null -> "${route.morningPct.roundToInt()}%"
-        route.sampleCount < 2 -> "측정중"
-        else -> "기온 자료 부족"
+        else -> "예측 자료 부족"
     }
     ComparisonRow("차박지 도착", eta(direct), via?.let(::eta) ?: "—")
     ComparisonRow("도착 잔량", if (direct.reachable) "${direct.arrivalPct.roundToInt()}%" else "—",
@@ -52,17 +53,24 @@ internal fun DepartureTable(comparison: DepartureComparison, wake: LocalTime?) {
     if (stop == null) {
         Text("도달 가능한 경로상 충전소가 없어요.")
     } else {
-        val label = if (comparison.requiresCharge) "권장 충전" else "선택 충전"
+        val label = when {
+            comparison.requiresCharge && direct.morningPct == null -> "주행 기준 권장 충전"
+            comparison.requiresCharge -> "권장 충전"
+            else -> "선택 충전"
+        }
         Text("${stop.station.name} · $label ${stop.minutes}분", style = MaterialTheme.typography.bodyMedium)
     }
-    fun evidence(route: RouteEstimate) = "EV 기록 ${route.sampleCount}건" + when (route.sampleCount) {
-        0, 1 -> " · 측정중"
-        2 -> " · 참고치"
-        else -> ""
+    if ((direct.reachable && direct.morningPct == null) || (via != null && via.stayMinutes > 0 && via.morningPct == null)) {
+        Text("차종·공조 설정·목업 기온에 맞는 야간 전력 자료가 부족해요. 이 경로의 기상 잔량을 계산할 수 없어요.",
+            style = MaterialTheme.typography.bodySmall)
     }
-    val basis = if (via == null || via.sampleCount == direct.sampleCount) evidence(direct)
-        else "직행 ${evidence(direct)} / 경유 ${evidence(via)}"
-    Text("$basis · 목업 기온 기준", style = MaterialTheme.typography.bodySmall)
+    Text(energyBasisText(setting.hvacOn), style = MaterialTheme.typography.bodySmall)
+}
+
+internal fun energyBasisText(heating: Boolean): String = if (heating) {
+    "난방 계산은 아이오닉 5 AWD 72.6 kWh의 외기 0°C·AUTO 22°C 시험 전력을 써요. 목업은 초기 난방 20분, 대기전력 0.2 kW를 가정해요."
+} else {
+    "아이오닉 5 AWD 72.6 kWh · 공조를 끈 동안 대기전력 0.2 kW를 가정해요."
 }
 
 @Composable
