@@ -40,7 +40,7 @@ fun ChargingScreen(stop: ChargingStop, spot: Spot) {
     val from = stop.station.location
     val arrival = now.plusMinutes(RouteProgress.estimate(from, spot).remainingMin.toLong())
     val records = CampingEnergyPlanner.matchingReports(reports, spot, arrival.monthValue)
-    val night = CampingEnergyPlanner.estimateNight(spot.overnightTemperaturesC, records,
+    val night = CampingEnergyPlanner.estimateNight(spot, arrival.toLocalTime(), records,
         stayMinutes = WakeSchedule.stayMinutes(arrival.toLocalTime(), wake))
     val pct = vehicle.batteryPct?.takeIf { it in 0f..100f }
     val plan = pct?.let {

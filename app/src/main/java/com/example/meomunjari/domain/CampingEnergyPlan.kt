@@ -56,11 +56,39 @@ object CampingEnergyPlanner {
         hvacNow: Boolean? = null, protectionTriggered: Boolean = false,
         stayMinutes: Int = WakeSchedule.DEFAULT_MINUTES,
     ): NightEstimate? {
-        if (stayMinutes !in 1..1440 || !elapsedHours.isFinite()) return null
-        val duration = stayMinutes / 60.0
-        val hours = ceil(duration).toInt()
-        if (records.size < 2 || temperatures.size < hours || temperatures.take(hours).any { !it.isFinite() }) return null
-        val elapsed = elapsedHours.coerceIn(0.0, duration)
+        return estimateWindow(0, records, elapsedHours, hvacNow, protectionTriggered, stayMinutes, temperatures::getOrNull)
+    }
+
+    fun estimateNight(
+        spot: Spot, start: LocalTime, records: List<MeasurementReport>, elapsedHours: Double = 0.0,
+        hvacNow: Boolean? = null, protectionTriggered: Boolean = false,
+        stayMinutes: Int = WakeSchedule.DEFAULT_MINUTES,
+    ): NightEstimate? {
+        if (spot.hourlyTemperaturesC.isEmpty()) {
+            return estimateNight(spot.overnightTemperaturesC, records, elapsedHours, hvacNow, protectionTriggered, stayMinutes)
+        }
+        val startMinute = start.hour * 60 + start.minute
+        return estimateWindow(startMinute, records, elapsedHours, hvacNow, protectionTriggered, stayMinutes) { hour ->
+            spot.hourlyTemperaturesC[LocalTime.of(hour % 24, 0).toString()]
+        }
+    }
+
+    private fun estimateWindow(
+        startMinute: Int, records: List<MeasurementReport>, elapsedHours: Double, hvacNow: Boolean?,
+        protectionTriggered: Boolean, stayMinutes: Int, temperatureAt: (Int) -> Double?,
+    ): NightEstimate? {
+        if (records.size < 2 || stayMinutes !in 1..1440 || !elapsedHours.isFinite()) return null
+        val end = startMinute + stayMinutes
+        val remainingStart = startMinute + (elapsedHours * 60).coerceIn(0.0, stayMinutes.toDouble())
+        val currentHour = (remainingStart / 60).toInt()
+        var heatingMinutes = 0.0
+        for (hour in currentHour until ceil(end / 60.0).toInt()) {
+            val overlap = minOf(end, (hour + 1) * 60) - maxOf(remainingStart, hour * 60.0)
+            if (overlap <= 0) continue
+            val temperature = temperatureAt(hour)?.takeIf { it.isFinite() } ?: return null
+            val heating = if (hour == currentHour && hvacNow != null) hvacNow else temperature < HEATING_THRESHOLD_C
+            if (heating && !protectionTriggered) heatingMinutes += overlap
+        }
         val offRecords = records.filter { it.hvacHours == 0.0 }
         val idleRate = if (offRecords.isEmpty()) IDLE_PCT_PER_HOUR
             else offRecords.sumOf { it.energyUsedPct } / offRecords.sumOf { it.durationHours }
@@ -69,14 +97,9 @@ object CampingEnergyPlanner {
             val onDrain = onRecords.sumOf { it.energyUsedPct - idleRate * (it.durationHours - it.hvacHours) }
             (onDrain / onRecords.sumOf { it.hvacHours }).coerceAtLeast(idleRate)
         }
-        var heat = 0.0
-        for (hour in 0 until hours) {
-            val remaining = (minOf(hour + 1.0, duration) - maxOf(hour.toDouble(), elapsed)).coerceAtLeast(0.0)
-            val heating = if (hour == elapsed.toInt() && hvacNow != null) hvacNow
-                else temperatures[hour] < HEATING_THRESHOLD_C
-            if (heating && !protectionTriggered) heat += remaining
-        }
-        return NightEstimate(heat * onRate + (duration - elapsed - heat) * idleRate, heat, records.size)
+        val heat = heatingMinutes / 60
+        val idle = (end - remainingStart - heatingMinutes).coerceAtLeast(0.0) / 60
+        return NightEstimate(heat * onRate + idle * idleRate, heat, records.size)
     }
 
     fun plan(
@@ -121,7 +144,7 @@ object CampingEnergyPlanner {
         val directArrival = start.plusMinutes(drivingMinutes(directKm).toLong())
         val directStay = WakeSchedule.stayMinutes(directArrival.toLocalTime(), wake)
         val directRecords = matchingReports(reports, spot, directArrival.monthValue)
-        val directNight = estimateNight(spot.overnightTemperaturesC, directRecords, stayMinutes = directStay)
+        val directNight = estimateNight(spot, directArrival.toLocalTime(), directRecords, stayMinutes = directStay)
         val plan = plan(nowPct, from, spot, car, efficiency, directNight, stations, includeOptionalStop = true) ?: return null
 
         val eff = efficiency?.takeIf { it.isFinite() && it > 0 } ?: car.efficiencyKmPerKWh
@@ -142,7 +165,7 @@ object CampingEnergyPlanner {
             val morning = when {
                 stay < 0 -> null
                 stay == 0 -> arrivalPct
-                else -> estimateNight(spot.overnightTemperaturesC, records, stayMinutes = stay)
+                else -> estimateNight(spot, arrival.toLocalTime(), records, stayMinutes = stay)
                     ?.let { (arrivalPct - it.drainPct).coerceAtLeast(0.0) }
             }
             RouteEstimate(arrival, arrivalPct, true, stay, morning, records.size)

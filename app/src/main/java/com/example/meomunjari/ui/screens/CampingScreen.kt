@@ -134,7 +134,7 @@ fun CampingScreen(onFinished: () -> Unit) {
                     SectionCard(title = "아침 예상 잔량") {
                         val records = CampingEnergyPlanner.matchingReports(reports, state.spot,
                             state.visit?.month ?: LocalDate.now().monthValue)
-                        val night = CampingEnergyPlanner.estimateNight(state.spot.overnightTemperaturesC, records,
+                        val night = CampingEnergyPlanner.estimateNight(state.spot, state.startedAt, records,
                             state.elapsedHours, vehicle.hvacOn.takeIf { hvacKnown }, state.protectionTriggered && hvacKnown && !vehicle.hvacOn, state.plannedMinutes)
                         val pct = vehicle.batteryPct
                         Text(when {
