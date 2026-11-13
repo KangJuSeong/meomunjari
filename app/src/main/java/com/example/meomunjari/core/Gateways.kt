@@ -30,7 +30,13 @@ class Gateways(
     }
 }
 
-data class LocationPreset(val label: String, val location: LatLng)
+data class RegistrationPlace(val name: String, val region: String)
+
+data class LocationPreset(
+    val label: String,
+    val location: LatLng,
+    val registrationPlace: RegistrationPlace? = null,
+)
 
 /** mock 플레이버의 가상 차량 콘솔. Pleos Virtual Console이 하는 일을 앱 안에서 대신한다. */
 interface VirtualConsole {

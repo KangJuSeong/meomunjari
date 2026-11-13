@@ -216,7 +216,10 @@ fun ReviewScreen(onDone: () -> Unit) {
 @Composable
 private fun BadgeChanges(before: MemberStatus, after: MemberStatus) {
     SectionCard(title = "이번 차박으로", trailing = { Pill("${after.grade.label} · ${after.points}P", MColors.Blue) }) {
-        val changed = after.badges.filter { a -> before.badges.first { it.type == a.type }.current != a.current }
+        val changed = after.badges.filter { a ->
+            val previous = before.badges.first { it.type == a.type }
+            previous.ratio != a.ratio
+        }
         if (after.points != before.points) {
             Text("+${after.points - before.points}P", style = MaterialTheme.typography.headlineSmall, color = MColors.Blue)
         }
@@ -232,13 +235,15 @@ private fun BadgeChanges(before: MemberStatus, after: MemberStatus) {
 
 @Composable
 fun BadgeLine(badge: BadgeProgress, old: BadgeProgress? = null) {
-    val delta = if (old != null && old.current != badge.current) " (+${badge.current - old.current})" else ""
+    val current = badge.current.coerceAtMost(badge.type.target)
+    val increase = old?.let { current - it.current.coerceAtMost(badge.type.target) } ?: 0
+    val delta = if (increase > 0) " (+$increase)" else ""
     val newlyEarned = old != null && !old.earned && badge.earned
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         ProgressRow(
             label = badge.type.title + if (newlyEarned) " 획득!" else "",
             ratio = badge.ratio,
-            trailing = "${badge.current.coerceAtMost(badge.type.target)}/${badge.type.target}$delta",
+            trailing = "${current}/${badge.type.target}$delta",
             color = if (badge.earned) MColors.Good else MColors.Amber,
         )
         Text(
