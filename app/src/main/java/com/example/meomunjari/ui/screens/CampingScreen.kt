@@ -60,6 +60,7 @@ fun CampingScreen(onFinished: () -> Unit) {
         return
     }
 
+    val hvacKnown = vehicle.connected && vehicle.hvacPowerKnown
     Column {
         ScreenHeader(
             title = "편안한 밤 보내세요",
@@ -79,7 +80,11 @@ fun CampingScreen(onFinished: () -> Unit) {
                     )
                     StatTile(
                         "공조",
-                        if (vehicle.hvacOn) "${vehicle.hvacTargetC?.roundToInt() ?: "-"}°C" else "꺼짐",
+                        when {
+                            !hvacKnown -> "확인 중"
+                            vehicle.hvacOn -> vehicle.hvacTargetC?.let { "${it.roundToInt()}°C" } ?: "켜짐"
+                            else -> "꺼짐"
+                        },
                         Modifier.weight(1f),
                         icon = Icons.Filled.AcUnit,
                     )
@@ -130,7 +135,7 @@ fun CampingScreen(onFinished: () -> Unit) {
                         val records = CampingEnergyPlanner.matchingReports(reports, state.spot,
                             state.visit?.month ?: LocalDate.now().monthValue)
                         val night = CampingEnergyPlanner.estimateNight(state.spot.overnightTemperaturesC, records,
-                            state.elapsedHours, vehicle.hvacOn, state.protectionTriggered && !vehicle.hvacOn)
+                            state.elapsedHours, vehicle.hvacOn.takeIf { hvacKnown }, state.protectionTriggered && hvacKnown && !vehicle.hvacOn)
                         val pct = vehicle.batteryPct
                         Text(when {
                             records.size < 2 -> "측정중 · EV 기록 ${records.size}/2건"
@@ -140,7 +145,7 @@ fun CampingScreen(onFinished: () -> Unit) {
                     }
                 }
                 SectionCard(title = "배터리 지킴이") {
-                    Text("잔량이 ${state.protectionThresholdPct}% 아래로 내려가면 공조를 끄고 알려요.", style = MaterialTheme.typography.bodyMedium)
+                    Text("잔량이 ${state.protectionThresholdPct}% 이하일 때 공조 끄기를 요청해요.", style = MaterialTheme.typography.bodyMedium)
                     Slider(
                         value = state.protectionThresholdPct.toFloat(),
                         onValueChange = { trip.setProtectionThreshold(it.roundToInt()) },
@@ -150,14 +155,14 @@ fun CampingScreen(onFinished: () -> Unit) {
                 }
                 SectionCard(title = "공조") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (vehicle.hvacOn) "켜짐" else "꺼짐", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Toggle(checked = vehicle.hvacOn, onCheckedChange = { on -> scope.launch { trip.setHvac(on) } })
+                        Text(when { !hvacKnown -> "상태 확인 중"; vehicle.hvacOn -> "켜짐"; else -> "꺼짐" }, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Toggle(checked = vehicle.hvacOn, enabled = hvacKnown, onCheckedChange = { on -> scope.launch { trip.setHvac(on) } })
                     }
                 }
                 SectionCard(title = "시연 가속") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("1초 = 10분", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Toggle(checked = scale >= 600, onCheckedChange = { trip.timeScale.value = if (it) 600 else 1 })
+                        Toggle(checked = scale >= 600, onCheckedChange = { trip.setTimeScale(if (it) 600 else 1) })
                     }
                     Text("밤새 기록을 몇 분 만에 보여주는 데모용 설정이에요.", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
                 }

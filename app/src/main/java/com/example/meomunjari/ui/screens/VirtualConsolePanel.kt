@@ -108,7 +108,7 @@ fun VirtualConsolePanel(console: VirtualConsole, onClose: () -> Unit, modifier: 
                 scales.forEachIndexed { i, (value, label) ->
                     SegmentedButton(
                         selected = scale == value,
-                        onClick = { c.timeScale.value = value },
+                        onClick = { c.trip.setTimeScale(value) },
                         shape = SegmentedButtonDefaults.itemShape(i, scales.size),
                     ) { Text(label, style = MaterialTheme.typography.labelSmall) }
                 }

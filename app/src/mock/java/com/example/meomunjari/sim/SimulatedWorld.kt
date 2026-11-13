@@ -51,6 +51,7 @@ class SimulatedWorld(
             efficiencyKmPerKWh = 5.1f,
             cabinTempC = 15f,
             hvacOn = false,
+            hvacPowerKnown = true,
             hvacTargetC = 21f,
         ),
     )
