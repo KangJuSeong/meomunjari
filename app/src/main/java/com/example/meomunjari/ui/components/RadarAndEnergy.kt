@@ -26,7 +26,6 @@ import com.example.meomunjari.core.model.Spot
 import com.example.meomunjari.domain.EnergyForecast
 import com.example.meomunjari.domain.ForecastBasis
 import com.example.meomunjari.domain.SpotHit
-import com.example.meomunjari.domain.Verdict
 import com.example.meomunjari.ui.theme.MColors
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -114,8 +113,6 @@ fun EnergyFlow(forecast: EnergyForecast) {
             EnergyStep("내일 아침", forecast.morningPct, highlight = true)
         }
         ProgressBar((forecast.morningPct / 100.0).toFloat())
-        val ok = forecast.verdict == Verdict.ENOUGH
-        Callout((if (ok) "✓ " else "! ") + forecast.message(), if (ok) MColors.Green else MColors.Orange)
         val basis = when (forecast.basis) {
             ForecastBasis.MEASURED -> "이 스팟 실측 ${forecast.sampleCount}회 기반"
             ForecastBasis.REFERENCE -> "실측 ${forecast.sampleCount}회뿐이라 참고치예요"

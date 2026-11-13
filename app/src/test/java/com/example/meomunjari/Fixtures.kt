@@ -70,7 +70,7 @@ object Fixtures {
         maxVehicleClass = VehicleClass.valueOf(o.s("maxVehicleClass")!!),
         visitedVehicleClasses = o["visitedVehicleClasses"]!!.jsonObject.mapKeys { VehicleClass.valueOf(it.key) }.mapValues { it.value.jsonPrimitive.int },
         liveCampers = o.i("liveCampers") ?: 0, typicalWeekendCampers = o.s("typicalWeekendCampers").orEmpty(),
-        nearestChargerKm = o.d("nearestChargerKm") ?: 10.0, photoColors = o.strings("photoColors"),
+        photoColors = o.strings("photoColors"),
     )
 
     private fun review(o: JsonObject) = Review(

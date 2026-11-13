@@ -3,7 +3,6 @@ package com.example.meomunjari.domain
 import com.example.meomunjari.Fixtures
 import com.example.meomunjari.core.model.LatLng
 import com.example.meomunjari.core.model.PowerType
-import com.example.meomunjari.data.mock.mockChargingStations
 import java.time.LocalDateTime
 import java.time.LocalTime
 import org.junit.Assert.*
@@ -17,11 +16,8 @@ class CampingEnergyPlanTest {
     private val departure = LocalDateTime.of(2026, 11, 3, 23, 0)
     private val bedtime = LocalTime.of(23, 0)
 
-    private fun plan(pct: Double, night: NightEstimate?) =
-        CampingEnergyPlanner.plan(pct, start, spot, car, 5.1, night, mockChargingStations)!!
-
-    private fun compare(pct: Double, wake: LocalTime? = null, target: Double = 22.0) =
-        CampingEnergyPlanner.compareRoutes(pct, start, spot, car, 5.1, departure, wake, target, true, mockChargingStations)!!
+    private fun estimate(pct: Double, wake: LocalTime? = null, target: Double = 22.0) =
+        CampingEnergyPlanner.estimateDeparture(pct, start, spot, car, 5.1, departure, wake, target, true)!!
 
     @Test fun eightHourColdStartUsesReferencePowerAndAssumptions() {
         val night = CampingEnergyPlanner.estimateNight(spot, bedtime, car, 22.0, true)!!
@@ -81,93 +77,41 @@ class CampingEnergyPlanTest {
         assertEquals(1.05, live.energyKWh, 0.000001)
     }
 
-    @Test fun comparisonIncludesDetourChargeAndShorterStayBeforeSameWake() {
-        val result = compare(25.0, LocalTime.of(6, 30))
-        val via = result.via!!
-        val stop = result.stop!!
-        val first = CampingEnergyPlanner.roadKm(start, stop.station.location)
-        val last = CampingEnergyPlanner.roadKm(stop.station.location, spot.location)
-        val minutes = CampingEnergyPlanner.drivingMinutes(first + last) + stop.minutes
-        assertEquals(departure.plusMinutes(minutes.toLong()), via.arrival)
-        assertTrue(via.arrival.toLocalDate() > departure.toLocalDate())
-        assertTrue(via.stayMinutes < result.direct.stayMinutes)
-        assertEquals(result.direct.arrival.plusMinutes(result.direct.stayMinutes.toLong()), via.arrival.plusMinutes(via.stayMinutes.toLong()))
-        val arrivalPct = 25.0 - EnergyPredictor.consumptionPct(first + last, car, 5.1) + stop.minutes
-        assertEquals(arrivalPct, via.arrivalPct, 0.0001)
-        val usedKWh = 0.2 + 0.7 * via.stayMinutes / 60
-        assertEquals(arrivalPct - usedKWh / 72.6 * 100, via.morningPct!!, 0.0001)
-        assertTrue(via.morningPct >= plan(100.0, null).requiredMorningPct)
+    @Test fun departureForecastUsesRouteConsumptionAndSelectedWakeTime() {
+        val result = estimate(25.0, LocalTime.of(6, 30))
+        assertEquals(departure.toLocalDate().plusDays(1).atTime(0, 10), result.arrival)
+        assertEquals(380, result.stayMinutes)
+        val distance = CampingEnergyPlanner.roadKm(start, spot.location)
+        val arrivalPct = 25.0 - EnergyPredictor.consumptionPct(distance, car, 5.1)
+        assertEquals(arrivalPct, result.arrivalPct, 0.0001)
+        val usedKWh = 0.2 + 0.7 * result.stayMinutes / 60
+        assertEquals(arrivalPct - usedKWh / 72.6 * 100, result.morningPct!!, 0.0001)
+        assertTrue(estimate(25.0, LocalTime.of(7, 0)).morningPct!! < result.morningPct)
     }
 
-    @Test fun optionalChargeAndDefaultNightAreAvailableEvenWhenDirectIsEnough() {
-        val result = compare(62.0)
-        assertFalse(result.requiresCharge)
-        assertEquals(15, result.stop!!.minutes)
-        assertEquals(480, result.direct.stayMinutes)
-        assertEquals(480, result.via!!.stayMinutes)
-        assertTrue(result.via.morningPct!! > result.direct.morningPct!!)
-        val high = compare(99.0)
-        assertTrue(high.stop!!.minutes < 15)
-        assertTrue(high.via!!.arrivalPct < 100)
+    @Test fun missingNightDataAndUnreachableRoutesRemainDistinct() {
+        val unsupported = estimate(25.0, target = 20.0)
+        assertTrue(unsupported.reachable)
+        assertNull(unsupported.morningPct)
+        val stranded = estimate(0.0)
+        assertFalse(stranded.reachable)
+        assertNull(stranded.morningPct)
     }
 
-    @Test fun comparisonHandlesMissingDataAndArrivalAfterWake() {
-        val directArrival = compare(25.0).direct.arrival
-        val late = compare(25.0, directArrival.toLocalTime().plusMinutes(1)).via!!
-        assertTrue(late.stayMinutes < 0)
-        assertNull(late.morningPct)
-        val unsupported = compare(62.0, target = 20.0)
-        assertNull(unsupported.direct.morningPct)
-        assertNull(unsupported.via!!.morningPct)
-        // 주행만으로 예비 잔량을 밑도는 경우에는 야간 소모 자료 없이도 충전이 필요하다.
-        assertTrue(compare(25.0, target = 20.0).requiresCharge)
-        val stranded = compare(0.0)
-        assertFalse(stranded.direct.reachable)
-        assertNull(stranded.direct.morningPct)
-        assertNull(stranded.via)
-    }
-
-    @Test fun directAndViaCheckOnlyTheirOwnHourlyWeather() {
-        val tripStart = departure.withHour(17).withMinute(35)
-        val weather = spot.copy(hourlyTemperaturesC = mapOf("18:00" to 5.0, "19:00" to 0.0))
-        val result = CampingEnergyPlanner.compareRoutes(62.0, start, weather, car, 5.1,
-            tripStart, LocalTime.of(20, 0), 22.0, true, mockChargingStations)!!
-        assertEquals(LocalTime.of(18, 45), result.direct.arrival.toLocalTime())
-        assertEquals(LocalTime.of(19, 0), result.via!!.arrival.toLocalTime())
-        assertNull(result.direct.morningPct)
-        assertNotNull(result.via.morningPct)
-    }
-
-    @Test fun chargeTargetIncludesKnownViaNightWhenDirectWeatherIsUnsupported() {
+    @Test fun departureForecastUsesTheWeatherAtArrival() {
         val tripStart = departure.withHour(17).withMinute(40)
         val weather = spot.copy(hourlyTemperaturesC = spot.hourlyTemperaturesC + ("18:00" to 5.0))
-        val result = CampingEnergyPlanner.compareRoutes(25.0, start, weather, car, 5.1, tripStart, null,
-            22.0, true, mockChargingStations)!!
-        assertNull(result.direct.morningPct)
-        val via = result.via!!
-        assertNotNull(via.morningPct)
-        val stop = result.stop!!
-        val reserve = plan(100.0, null).requiredMorningPct
-        val lastLeg = CampingEnergyPlanner.roadKm(stop.station.location, weather.location)
-        val morningAtTarget = stop.targetPct!! - EnergyPredictor.consumptionPct(lastLeg, car, 5.1) - 5.8 / 72.6 * 100
-        assertTrue(morningAtTarget >= reserve)
-        assertTrue(via.morningPct!! >= reserve)
+        val result = CampingEnergyPlanner.estimateDeparture(25.0, start, weather, car, 5.1,
+            tripStart, null, 22.0, true)!!
+        assertEquals(LocalTime.of(18, 50), result.arrival.toLocalTime())
+        assertNull(result.morningPct)
     }
 
-    @Test fun wakeTimeAcrossMidnightChangesChargeDecision() {
+    @Test fun wakeTimeAcrossMidnightIncludesTheFullStay() {
         val wake = LocalTime.of(6, 30)
-        val minutes = WakeSchedule.stayMinutes(bedtime, wake)
-        assertEquals(450, minutes)
+        assertEquals(450, WakeSchedule.stayMinutes(bedtime, wake))
         assertEquals(480, WakeSchedule.stayMinutes(bedtime, null))
         assertEquals(1440, WakeSchedule.stayMinutes(bedtime, bedtime))
         assertEquals(30, WakeSchedule.stayMinutes(wake, wake.plusMinutes(30)))
-        fun estimate(duration: Int) = CampingEnergyPlanner.estimateNight(spot, bedtime, car, 22.0, true, stayMinutes = duration)!!
-        val early = estimate(minutes)
-        val late = estimate(minutes + 30)
-        val full = plan(100.0, early)
-        val pct = 100 - full.arrivalPct + full.requiredMorningPct + (early.drainPct + late.drainPct) / 2
-        assertFalse(plan(pct, early).requiresCharge)
-        assertTrue(plan(pct, late).requiresCharge)
-        assertNotNull(plan(pct, late).stop)
     }
 }

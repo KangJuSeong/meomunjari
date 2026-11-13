@@ -59,7 +59,6 @@
     },
     "liveCampers": 3,
     "typicalWeekendCampers": "보통 주말 밤 6~8대",
-    "nearestChargerKm": 6.5,
     "photoColors": [
       "#3B5B6E",
       "#12202A"
@@ -121,7 +120,6 @@
     },
     "liveCampers": 1,
     "typicalWeekendCampers": "보통 주말 밤 4~5대",
-    "nearestChargerKm": 3.2,
     "photoColors": [
       "#4C7A8C",
       "#14262E"
@@ -190,7 +188,6 @@
     },
     "liveCampers": 2,
     "typicalWeekendCampers": "보통 주말 밤 4~5대",
-    "nearestChargerKm": 8.0,
     "photoColors": [
       "#1E2B4A",
       "#070B16"
@@ -250,7 +247,6 @@
     },
     "liveCampers": 0,
     "typicalWeekendCampers": "보통 주말 밤 1~2대",
-    "nearestChargerKm": 11.0,
     "photoColors": [
       "#2B3550",
       "#0C1020"
@@ -316,7 +312,6 @@
     },
     "liveCampers": 4,
     "typicalWeekendCampers": "보통 주말 밤 7~9대",
-    "nearestChargerKm": 1.5,
     "photoColors": [
       "#3E6B5E",
       "#122520"
@@ -377,7 +372,6 @@
     },
     "liveCampers": 0,
     "typicalWeekendCampers": "보통 주말 밤 1~2대",
-    "nearestChargerKm": 14.0,
     "photoColors": [
       "#233148",
       "#0A0F1A"
@@ -434,7 +428,6 @@
     },
     "liveCampers": 2,
     "typicalWeekendCampers": "보통 주말 밤 5~6대",
-    "nearestChargerKm": 4.0,
     "photoColors": [
       "#55808F",
       "#15252B"
@@ -495,7 +488,6 @@
     },
     "liveCampers": 1,
     "typicalWeekendCampers": "보통 주말 밤 8~10대",
-    "nearestChargerKm": 16.0,
     "photoColors": [
       "#2E3A5C",
       "#0B0F1C"
@@ -552,7 +544,6 @@
     },
     "liveCampers": 0,
     "typicalWeekendCampers": "보통 주말 밤 2~3대",
-    "nearestChargerKm": 7.5,
     "photoColors": [
       "#3A5A4A",
       "#101C17"

@@ -9,13 +9,10 @@ import com.example.meomunjari.core.model.LatLng
 import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.model.Spot
 import com.example.meomunjari.core.navi.NaviDestination
-import com.example.meomunjari.core.navi.ChargingStop
-import com.example.meomunjari.domain.EnergyPredictor
 import com.example.meomunjari.core.navi.NaviGateway
 import com.example.meomunjari.core.vehicle.ApplyItemResult
 import com.example.meomunjari.core.vehicle.ApplyStatus
 import com.example.meomunjari.core.vehicle.ControlItem
-import com.example.meomunjari.core.vehicle.ChargeState
 import com.example.meomunjari.core.vehicle.Gear
 import com.example.meomunjari.core.vehicle.VehicleGateway
 import com.example.meomunjari.core.vehicle.VehicleSnapshot
@@ -49,7 +46,6 @@ class SimulatedWorld(
     private val _snapshot = MutableStateFlow(
         VehicleSnapshot(
             connected = true,
-            chargeState = ChargeState.IDLE,
             gear = Gear.PARK,
             speedKmh = 0f,
             batteryPct = 64f,
@@ -71,12 +67,6 @@ class SimulatedWorld(
 
     private val _destination = MutableStateFlow<NaviDestination?>(null)
     override val destination: StateFlow<NaviDestination?> = _destination.asStateFlow()
-
-    private val _chargingStop = MutableStateFlow<ChargingStop?>(null)
-    override val chargingStop = _chargingStop.asStateFlow()
-
-    private val _arrivedStop = MutableStateFlow<ChargingStop?>(null)
-    override val arrivedStop = _arrivedStop.asStateFlow()
 
     private val _outside = MutableStateFlow(7f)
     override val outsideTempC: StateFlow<Float> = _outside.asStateFlow()
@@ -127,15 +117,12 @@ class SimulatedWorld(
                 val drainPerHour = 0.8 + 0.08 * abs(target - outside)
                 battery -= (drainPerHour * simMinutes / 60.0).toFloat()
             }
-            val charging = s.chargeState == ChargeState.CHARGING && _arrivedStop.value != null && s.gear == Gear.PARK
-            if (charging) battery += (simMinutes * EnergyPredictor.FAST_CHARGE_PCT_PER_MIN).toFloat()
             val cabin = s.cabinTempC ?: outsideC
             val goal = if (s.hvacOn) s.hvacTargetC ?: cabin else outsideC + if (s.windowOpenPct > 0) 0f else 3f
             val tau = if (s.hvacOn) 15.0 else 90.0
             val k = 1 - exp(-simMinutes / tau)
             s.copy(
                 batteryPct = battery.coerceIn(0f, 100f),
-                chargeState = if (charging && battery >= 100f) ChargeState.FULL else s.chargeState,
                 cabinTempC = (cabin + (goal - cabin) * k).toFloat(),
                 outsideTempC = outsideC,
             )
@@ -145,26 +132,22 @@ class SimulatedWorld(
     private fun driveTowardDestination() {
         val dest = _destination.value ?: run { _autoDrive.value = false; return }
         val here = _location.value ?: return
-        val via = _chargingStop.value
-        val stop = via?.station?.location ?: Geo.offsetNorth(dest.location, 40.0)
-        val remaining = Geo.distanceM(here, stop)
+        val arrivalPoint = Geo.offsetNorth(dest.location, 40.0)
+        val remaining = Geo.distanceM(here, arrivalPoint)
         if (driveStepM <= 0) driveStepM = max(remaining / 12.0, 200.0)
         val step = minOf(driveStepM, remaining)
         val arrived = step >= remaining
         val usedPct = step * Geo.ROAD_FACTOR / 1000.0 / (_snapshot.value.efficiencyKmPerKWh ?: 5f) / batteryKWh * 100
-        val parkAtStation = arrived && via != null
-        _location.value = if (arrived) stop else Geo.interpolate(here, stop, step / remaining)
+        _location.value = if (arrived) arrivalPoint else Geo.interpolate(here, arrivalPoint, step / remaining)
         _snapshot.update {
             it.copy(
-                gear = if (parkAtStation) Gear.PARK else Gear.DRIVE,
+                gear = Gear.DRIVE,
                 speedKmh = if (arrived) 0f else 62f,
                 batteryPct = ((it.batteryPct ?: 0f) - usedPct).toFloat().coerceIn(0f, 100f),
             )
         }
         if (arrived) {
             driveStepM = 0.0
-            _arrivedStop.value = via
-            _chargingStop.value = null
             _autoDrive.value = false
         }
     }
@@ -206,39 +189,13 @@ class SimulatedWorld(
 
     // ---------- NaviGateway ----------
 
-    override suspend fun requestRoute(destination: NaviDestination, via: ChargingStop?): Boolean {
-        clearStation()
-        _chargingStop.value = via
+    override suspend fun requestRoute(destination: NaviDestination): Boolean {
         _destination.value = destination
         driveStepM = 0.0
         return true
     }
 
-    private fun clearStation() {
-        _arrivedStop.value = null
-        _snapshot.update { it.copy(chargeState = ChargeState.IDLE) }
-    }
-
-    override fun leaveChargingStop() {
-        if (_arrivedStop.value == null) return
-        clearStation()
-        setAutoDrive(true)
-    }
-
-    override fun setCharging(enabled: Boolean) {
-        if (_arrivedStop.value == null || _snapshot.value.gear != Gear.PARK) return
-        _snapshot.update {
-            it.copy(chargeState = when {
-                !enabled -> ChargeState.IDLE
-                (it.batteryPct ?: 0f) >= 100f -> ChargeState.FULL
-                else -> ChargeState.CHARGING
-            })
-        }
-    }
-
     override fun cancelRoute() {
-        clearStation()
-        _chargingStop.value = null
         _destination.value = null
         _autoDrive.value = false
     }
@@ -257,7 +214,6 @@ class SimulatedWorld(
     }
 
     override fun setGear(gear: Gear) {
-        if (gear != Gear.PARK && _arrivedStop.value != null) clearStation()
         _snapshot.update { it.copy(gear = gear, speedKmh = if (gear == Gear.PARK) 0f else it.speedKmh) }
     }
 
@@ -273,7 +229,7 @@ class SimulatedWorld(
     override fun setWiper(active: Boolean) = _snapshot.update { it.copy(wiperActive = active) }
 
     override fun setAutoDrive(enabled: Boolean) {
-        if (enabled && (_destination.value == null || _arrivedStop.value != null)) return
+        if (enabled && _destination.value == null) return
         if (enabled) driveStepM = 0.0
         _autoDrive.value = enabled
         if (!enabled) _snapshot.update { it.copy(speedKmh = 0f) }

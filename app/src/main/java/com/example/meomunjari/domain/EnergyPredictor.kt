@@ -10,8 +10,6 @@ enum class ForecastBasis(val label: String) {
     SEASONAL_DEFAULT("계절 기본값 (참고치)"),
 }
 
-enum class Verdict { ENOUGH, REFUEL_ON_ROUTE }
-
 data class EnergyForecast(
     val nowPct: Double,
     val routeKm: Double,
@@ -19,23 +17,12 @@ data class EnergyForecast(
     val overnightPct: Double,
     val morningPct: Double,
     val stayHours: Double,
-    val chargerKm: Double,
-    val neededAtMorningPct: Double,
-    val verdict: Verdict,
     val basis: ForecastBasis,
     val sampleCount: Int,
-) {
-    fun message(): String = when (verdict) {
-        Verdict.ENOUGH -> "가장 가까운 주유소까지 충분해요"
-        Verdict.REFUEL_ON_ROUTE -> "출발 전 경로상 주유소에서 주유하세요"
-    }
-}
+)
 
 /** 주행 구간 소모량과 내연기관의 차박 연료 예측. 전기차의 야간 소모는 CampingEnergyPlanner에서 계산한다. */
 object EnergyPredictor {
-    const val RESERVE_PCT = 15.0
-    const val CHARGE_MARGIN_PCT = 5.0
-    const val FAST_CHARGE_PCT_PER_MIN = 1.0
     const val DEFAULT_STAY_HOURS = 8.0
 
     private fun seasonalFuelDrainPerHour(month: Int): Double = when (ReportAggregator.season(month)) {
@@ -60,7 +47,6 @@ object EnergyPredictor {
         car: CarProfile,
         summary: ReportSummary?,
         month: Int,
-        chargerKm: Double,
         stayHours: Double = DEFAULT_STAY_HOURS,
     ): EnergyForecast? {
         if (car.powerType != PowerType.ICE) return null
@@ -77,9 +63,6 @@ object EnergyPredictor {
         val arrive = max(0.0, nowPct - consumptionPct(routeKm, car))
         val overnight = drainPerHour * stayHours
         val morning = max(0.0, arrive - overnight)
-        val needed = consumptionPct(chargerKm, car) + RESERVE_PCT
-
-        val verdict = if (morning >= needed) Verdict.ENOUGH else Verdict.REFUEL_ON_ROUTE
 
         return EnergyForecast(
             nowPct = nowPct,
@@ -88,9 +71,6 @@ object EnergyPredictor {
             overnightPct = overnight,
             morningPct = morning,
             stayHours = stayHours,
-            chargerKm = chargerKm,
-            neededAtMorningPct = needed,
-            verdict = verdict,
             basis = basis,
             sampleCount = energySamples,
         )
