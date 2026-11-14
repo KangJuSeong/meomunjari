@@ -126,7 +126,7 @@ fun RegisterScreen(onBack: () -> Unit, onRegistered: (String) -> Unit) {
                                 style = MaterialTheme.typography.bodyMedium)
                         }
                     } else {
-                        Text("야영 가능 여부 확인 필요", style = MaterialTheme.typography.bodyLarge)
+                        Text("야영해도 되는 곳인지 현장 안내판에서 확인해 주세요.", style = MaterialTheme.typography.bodyLarge)
                     }
                     if (currentPlace != null) {
                         KeyValue("시·도", region)
