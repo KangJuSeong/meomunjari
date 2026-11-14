@@ -55,7 +55,7 @@ fun DrivingScreen() {
                 Row(horizontalArrangement = Arrangement.spacedBy(56.dp), modifier = Modifier.padding(vertical = 8.dp)) {
                     BigNumber("남은 거리", "${(r.remainingKm * 10).roundToInt() / 10.0}km")
                     BigNumber("예상 주행 시간", "약 ${r.remainingMin}분")
-                    vehicle.energyPct?.let { pct ->
+                    vehicle.energyPct(user.car.powerType)?.let { pct ->
                         val arrive = pct - EnergyPredictor.consumptionPct(r.remainingKm, user.car, vehicle.efficiencyKmPerKWh?.toDouble())
                         if (arrive < 0) BigNumber("차박지 도착", "잔량 부족", MColors.Orange)
                         else BigNumber("도착 잔량", "${arrive.roundToInt()}%", MColors.Blue)

@@ -54,7 +54,6 @@ fun CampingScreen(onFinished: () -> Unit) {
     val camping by trip.camping.collectAsStateWithLifecycle()
     val vehicle by trip.vehicle.collectAsStateWithLifecycle()
     val scale by trip.timeScale.collectAsStateWithLifecycle()
-    val user by c.repos.user.user.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     val state = camping ?: run {
@@ -62,6 +61,7 @@ fun CampingScreen(onFinished: () -> Unit) {
         return
     }
 
+    val energyPct = vehicle.energyPct(state.car.powerType)
     val hvacKnown = vehicle.connected && vehicle.hvacPowerKnown
     Column {
         ScreenHeader(
@@ -74,8 +74,8 @@ fun CampingScreen(onFinished: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatTile("실내 온도", vehicle.cabinTempC?.let { "${(it * 10).roundToInt() / 10.0}°C" } ?: "-", Modifier.weight(1f), icon = Icons.Filled.Thermostat)
                     StatTile(
-                        user.car.powerType.energyLabel,
-                        vehicle.energyPct?.let { "${(it * 10).roundToInt() / 10.0}%" } ?: "-",
+                        state.car.powerType.energyLabel,
+                        energyPct?.let { "${(it * 10).roundToInt() / 10.0}%" } ?: "-",
                         Modifier.weight(1f),
                         icon = Icons.Filled.BatteryStd,
                         accent = if (state.protectionTriggered) MColors.Danger else MaterialTheme.colorScheme.onSurface,
@@ -124,18 +124,17 @@ fun CampingScreen(onFinished: () -> Unit) {
             }
 
             Column(Modifier.weight(0.8f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                if (user.car.powerType == PowerType.EV) {
+                if (state.car.powerType == PowerType.EV) {
                     SectionCard(title = "아침 예상 잔량") {
                         val night = if (hvacKnown) CampingEnergyPlanner.estimateNight(
-                            state.spot, state.startedAt, user.car, vehicle.hvacTargetC?.toDouble(), vehicle.hvacOn,
+                            state.spot, state.startedAt, state.car, vehicle.hvacTargetC?.toDouble(), vehicle.hvacOn,
                             elapsedHours = state.elapsedHours, stayMinutes = state.plannedMinutes,
                         ) else null
-                        val pct = vehicle.batteryPct?.takeIf { vehicle.connected && it in 0f..100f }
                         Text(when {
                             state.elapsedSimMs >= state.plannedMinutes * 60_000L -> "예정한 기상 시간이 지났어요"
-                            !hvacKnown || pct == null -> "차량 배터리와 공조 상태를 확인하고 있어요"
+                            !hvacKnown || energyPct == null -> "차량 배터리와 공조 상태를 확인하고 있어요"
                             night == null -> "현재 조건의 야간 전력 자료가 부족해요"
-                            else -> "${Math.round((pct - night.drainPct).coerceAtLeast(0.0))}% · ${state.wakeAt?.let { "$it 기상 기준" } ?: "차박 시작 8시간 기준"}"
+                            else -> "${Math.round((energyPct - night.drainPct).coerceAtLeast(0.0))}% · ${state.wakeAt?.let { "$it 기상 기준" } ?: "차박 시작 8시간 기준"}"
                         })
                         if (hvacKnown && state.elapsedSimMs < state.plannedMinutes * 60_000L)
                             Text(energyBasisText(vehicle.hvacOn), style = MaterialTheme.typography.bodySmall)

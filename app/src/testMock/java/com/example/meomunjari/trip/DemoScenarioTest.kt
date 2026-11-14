@@ -5,6 +5,7 @@ import com.example.meomunjari.core.Gateways
 import com.example.meomunjari.core.Geo
 import com.example.meomunjari.core.model.Amenities
 import com.example.meomunjari.core.model.LatLng
+import com.example.meomunjari.core.model.PowerType
 import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.model.VehicleClass
 import com.example.meomunjari.domain.CampingEnergyPlanner
@@ -360,6 +361,20 @@ class DemoScenarioTest {
         assertEquals(19f, world.snapshot.value.hvacTargetC)
         assertNull(trip.camping.value!!.initialMorningPct)
         assertNull(trip.endCamping()!!.batteryComparison!!.predictedMorningPct)
+    }
+
+    @Test
+    fun changingProfileDuringCampingDoesNotMixBatteryAndFuelMeasurements() = runBlocking {
+        startNight(consent = true)
+        repos.user.update { it.copy(car = it.car.copy(powerType = PowerType.ICE)) }
+        world.setBattery(58f)
+        clock += 1_000
+        trip.recordSample(trip.camping.value!!)
+
+        val finished = trip.endCamping()!!
+        assertEquals(PowerType.EV, finished.report!!.powerType)
+        assertEquals(4.0, finished.report!!.measuredEnergyUsedPct!!, 0.0)
+        assertEquals(58.0, finished.batteryComparison!!.endPct!!, 0.0)
     }
 
     private suspend fun startNight(setting: SettingPreset? = null, consent: Boolean = false) {

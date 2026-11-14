@@ -1,5 +1,6 @@
 package com.example.meomunjari.core.vehicle
 
+import com.example.meomunjari.core.model.PowerType
 import com.example.meomunjari.core.model.SettingPreset
 import kotlinx.coroutines.flow.StateFlow
 
@@ -35,8 +36,14 @@ data class VehicleSnapshot(
     val seatBackrestPct: Map<String, Int> = emptyMap(),
     val hvacPowerKnown: Boolean = false,
 ) {
-    /** EV면 배터리 %, 내연기관이면 연료 %. */
-    val energyPct: Float? get() = batteryPct ?: fuelPct
+    fun energyPct(powerType: PowerType): Float? {
+        if (!connected) return null
+        val reading = when (powerType) {
+            PowerType.EV -> batteryPct
+            PowerType.ICE -> fuelPct
+        }
+        return reading?.takeIf { it in 0f..100f }
+    }
 }
 
 /** 차박 세팅에서 제어하는 항목. */
