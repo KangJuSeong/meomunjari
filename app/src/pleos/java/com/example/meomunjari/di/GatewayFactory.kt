@@ -16,6 +16,8 @@ object GatewayFactory {
         "android.car.permission.CAR_SPEED",
         // FusedLocation SDK 위치. Pleos 위치 서비스가 dangerous 권한으로 선언해 실행 중에 받아야 한다.
         "pleos.car.permission.FUSED_LOCATION",
+        // 목적지 도착 알림(Android 13+)
+        "android.permission.POST_NOTIFICATIONS",
     )
 
     @Suppress("UNUSED_PARAMETER")

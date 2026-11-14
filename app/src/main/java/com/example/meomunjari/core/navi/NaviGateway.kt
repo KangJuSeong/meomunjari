@@ -20,4 +20,7 @@ interface NaviGateway {
     suspend fun requestRoute(destination: NaviDestination): Boolean
 
     fun cancelRoute()
+
+    /** 내비 화면에 있다가 목적지에 도착했을 때 이 앱 화면을 다시 앞으로 올린다. 기본은 아무것도 하지 않는다. */
+    fun returnToApp() {}
 }
