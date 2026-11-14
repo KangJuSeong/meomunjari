@@ -28,14 +28,31 @@ import com.example.meomunjari.core.navi.NaviDestination
 import com.example.meomunjari.core.navi.NaviGateway
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
-class PleosNaviGateway internal constructor(private val navi: NaviHelper) : NaviGateway {
-    constructor(context: Context) : this(NaviHelper(context.applicationContext))
+class PleosNaviGateway internal constructor(
+    private val navi: NaviHelper,
+    /** 내비 지도 앱을 띄운다. 띄우기를 시도했으면 true. */
+    private val launchNaviApp: () -> Boolean = { false },
+    /** 지도 앱이 준비되면 이 앱을 다시 앞으로 올린다(뒤에 있으면 얼려져 내비 이벤트를 놓친다). */
+    private val bringAppBack: () -> Unit = {},
+    /** 경로를 요청한 뒤 내비가 아무 이벤트도 보내지 않으면 지도 앱이 꺼진 것으로 보는 시간. */
+    private val noResponseMs: Long = NO_RESPONSE_MS,
+    /** 지도 앱을 띄운 뒤 다시 요청하기까지 기다리는 시간. */
+    private val appStartMs: Long = NAVI_APP_START_MS,
+    /** 이 앱을 앞으로 되돌린 뒤 다시 요청하기까지 기다리는 시간. */
+    private val bringBackSettleMs: Long = BRING_BACK_SETTLE_MS,
+) : NaviGateway {
+    constructor(context: Context) : this(
+        NaviHelper(context.applicationContext),
+        { launchNaviApp(context.applicationContext) },
+        { bringAppBack(context.applicationContext) },
+    )
 
     private val _destination = MutableStateFlow<NaviDestination?>(null)
     override val destination = _destination.asStateFlow()
@@ -44,13 +61,18 @@ class PleosNaviGateway internal constructor(private val navi: NaviHelper) : Navi
     @Volatile private var connected = false
     private var pending: CompletableDeferred<Boolean>? = null
 
+    /** 경로 요청 뒤 내비가 무엇이든 응답했는가. 응답이 없으면 지도 앱이 안 떠 있는 것이다. */
+    @Volatile private var naviResponded = false
+
     private val listener = object : NaviHelperEventListener {
         override fun onRoutingCompleted() {
+            naviResponded = true
             PleosLog.info("⇠ NaviHelper.onRoutingCompleted()")
             confirmPending("onRoutingCompleted")
         }
 
         override fun onError(errorCode: NaviErrorCode) {
+            naviResponded = true
             PleosLog.warn("✗ NaviHelper.onError = ${PleosLog.fmt(errorCode)}")
             synchronized(routeState) { pending?.complete(false) }
             Log.w(TAG, "Navigation error: $errorCode")
@@ -62,12 +84,14 @@ class PleosNaviGateway internal constructor(private val navi: NaviHelper) : Navi
          * 요청 중이면 성공으로 보고, 아니면 목적지를 지우지 않는다. 안내 종료는 FREE_DRIVE로 판단한다.
          */
         override fun onRouteEnded() {
+            naviResponded = true
             PleosLog.info("⇠ NaviHelper.onRouteEnded()")
             confirmPending("onRouteEnded")
         }
 
         /** 새 경로를 요청하면 내비가 먼저 기존 경로를 취소한다. 요청 중의 취소는 그 기존 경로 것이라 무시한다. */
         override fun onRouteCancelled() {
+            naviResponded = true
             val requesting = synchronized(routeState) { pending != null }
             if (requesting) {
                 PleosLog.info("⇠ NaviHelper.onRouteCancelled() → 새 경로 요청 중이라 기존 경로 취소로 보고 무시")
@@ -78,8 +102,10 @@ class PleosNaviGateway internal constructor(private val navi: NaviHelper) : Navi
         }
 
         // ---- 아래는 앱 동작에는 쓰지 않고 로그로만 남기는 이벤트 ----
-        override fun onRouteStarted(routeStartInfo: RouteStartInfo) =
+        override fun onRouteStarted(routeStartInfo: RouteStartInfo) {
+            naviResponded = true
             PleosLog.info("⇠ NaviHelper.onRouteStarted = ${PleosLog.fmt(routeStartInfo)}")
+        }
         override fun onReRouteEnded() = PleosLog.info("⇠ NaviHelper.onReRouteEnded()")
         override fun onRouteOptionChanged(routeOption: RouteOption) =
             PleosLog.info("⇠ NaviHelper.onRouteOptionChanged = ${PleosLog.fmt(routeOption)}")
@@ -98,6 +124,7 @@ class PleosNaviGateway internal constructor(private val navi: NaviHelper) : Navi
         override fun onWayPointInfo(waypointInfoList: List<WaypointInfo>) =
             PleosLog.info("⇠ NaviHelper.onWayPointInfo = ${PleosLog.fmt(waypointInfoList)}")
         override fun onNavigationStatus(status: NavigationStatus) {
+            naviResponded = true
             PleosLog.info("⇠ NaviHelper.onNavigationStatus = ${PleosLog.fmt(status)}")
             when (status) {
                 NavigationStatus.ROUTE_DRIVE -> confirmPending("onNavigationStatus(ROUTE_DRIVE)")
@@ -190,10 +217,33 @@ class PleosNaviGateway internal constructor(private val navi: NaviHelper) : Navi
                 displayLatitude = null, displayLongitude = null, poiName = destination.name,
                 poiId = "", poiSubId = "0", address = destination.address,
             )
+            naviResponded = false
             PleosLog.info("→ NaviHelper.requestRoute(${PleosLog.fmt(route)})")
             navi.requestRoute(route)
-            val confirmed = withTimeoutOrNull(10_000) { request.await() } == true
-            PleosLog.info("← NaviHelper 경로 결과: ${if (confirmed) "성공" else "실패 또는 10초 시간 초과"} (${destination.name})")
+            // 에뮬레이터를 막 켠 뒤처럼 지도 앱이 안 떠 있으면 요청이 아무 응답 없이 사라진다.
+            // 잠깐 기다려도 내비가 아무 이벤트도 보내지 않으면 지도 앱을 띄우고 한 번 더 요청한다.
+            var result = withTimeoutOrNull(noResponseMs) { request.await() }
+            if (result == null && !naviResponded) {
+                PleosLog.warn("내비가 ${noResponseMs / 1000}초 동안 응답 없음 → 지도 앱을 띄우고 다시 요청")
+                if (launchNaviApp()) {
+                    // 지도 앱이 화면을 띄우고 내비 엔진을 준비할 시간을 준 뒤 이 앱을 앞으로 되돌린다.
+                    // 지도 앱이 뜨면서 처음 요청을 처리하는 경우가 많다. 그때는 내비가 앞에 나와 있으면 되므로 그대로 둔다.
+                    withTimeoutOrNull(appStartMs) { request.await() }
+                    if (!request.isCompleted) {
+                        bringAppBack()
+                        delay(bringBackSettleMs)
+                        if (!request.isCompleted) {
+                            PleosLog.info("→ NaviHelper.requestRoute(재요청) ${destination.name}")
+                            navi.requestRoute(route)
+                        }
+                    }
+                } else {
+                    PleosLog.warn("지도 앱을 띄우지 못함 → 남은 시간 동안 응답을 기다림")
+                }
+            }
+            if (result == null) result = withTimeoutOrNull(ROUTE_CONFIRM_TIMEOUT_MS) { request.await() }
+            val confirmed = result == true
+            PleosLog.info("← NaviHelper 경로 결과: ${if (confirmed) "성공" else "실패 또는 ${ROUTE_CONFIRM_TIMEOUT_MS / 1000}초 시간 초과"} (${destination.name})")
             synchronized(routeState) {
                 if (!confirmed || pending !== request) return@withLock false
                 _destination.value = destination
@@ -216,5 +266,39 @@ class PleosNaviGateway internal constructor(private val navi: NaviHelper) : Navi
         runCatching { navi.cancelRoute() }.onFailure { PleosLog.warn("✗ NaviHelper.cancelRoute: ${it.message}", it) }
     }
 
-    private companion object { const val TAG = "PleosNavi" }
+    private companion object {
+        const val TAG = "PleosNavi"
+        /** Pleos Connect 내비 지도 앱. 경로 요청은 내비 서비스를 거쳐 이 앱이 처리한다. */
+        const val NAVI_APP_PACKAGE = "ai.umos.maps.android.navigation.app"
+        const val NO_RESPONSE_MS = 5_000L
+        const val NAVI_APP_START_MS = 4_000L
+        const val BRING_BACK_SETTLE_MS = 1_000L
+
+        /** 이 앱의 화면을 다시 맨 앞으로 올린다. */
+        fun bringAppBack(context: Context) {
+            runCatching {
+                val back = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
+                back.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                context.startActivity(back)
+                PleosLog.info("→ 이 앱을 다시 앞으로")
+            }.onFailure { PleosLog.warn("✗ 이 앱을 앞으로 올리지 못함: ${it.message}", it) }
+        }
+
+        fun launchNaviApp(context: Context): Boolean = runCatching {
+            val intent = context.packageManager.getLaunchIntentForPackage(NAVI_APP_PACKAGE)
+            if (intent == null) {
+                PleosLog.warn("지도 앱($NAVI_APP_PACKAGE)을 찾지 못함")
+                return false
+            }
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            PleosLog.info("→ 지도 앱 실행: $NAVI_APP_PACKAGE")
+            true
+        }.getOrElse {
+            PleosLog.warn("✗ 지도 앱 실행 실패: ${it.message}", it)
+            false
+        }
+        /** 내비가 경로를 잡기까지 기다리는 시간. 에뮬레이터에서 200km 경로에 10초 넘게 걸린 적이 있다. */
+        const val ROUTE_CONFIRM_TIMEOUT_MS = 30_000L
+    }
 }

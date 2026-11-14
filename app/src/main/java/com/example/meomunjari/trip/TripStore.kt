@@ -143,6 +143,16 @@ class TripStore(
      */
     private var finishedSpotId: String? = null
 
+    /**
+     * 앱을 켤 때 이미 주차해 있던 스팟. 그 자리에서 앱을 켰다는 이유만으로 도착 인증하지 않는다.
+     * 그 스팟을 목적지로 정하면 예외이고, 반경의 2배 밖으로 나갔다 오면 다시 인증할 수 있다.
+     */
+    private var launchSpotId: String? = null
+    private var launchChecked = false
+
+    /** 앱 실행(start) 때 켠다. 단위 테스트는 evaluateArrival을 직접 부르므로 기본은 꺼 둔다. */
+    internal var skipSpotParkedAtLaunch = false
+
     /** 이번 방문 직전의 회원 상태. 차박 후 '이번에 오른 진행도'를 보여줄 기준. */
     private var statusBeforeVisit: MemberStatus? = null
     private var clockAnchorMs = 0L
@@ -163,6 +173,7 @@ class TripStore(
 
     fun start() {
         if (loops.isNotEmpty()) return
+        skipSpotParkedAtLaunch = true
         loops = listOf(
             scope.launch { while (isActive) { evaluateArrival(); delay(500) } },
             scope.launch { campingLoop() },
@@ -226,7 +237,17 @@ class TripStore(
             if (done == null || loc == null || Geo.distanceM(loc, done.location) > done.radiusM * 2) finishedSpotId = null
         }
 
-        val target = _destination.value ?: loc?.let { SpotSearch.spotAt(spots, it) }
+        // 앱을 켠 순간의 위치가 스팟 안이면 기억해 두고, 그 스팟은 목적지가 아닐 때 자동 인증 대상에서 뺀다.
+        if (skipSpotParkedAtLaunch && !launchChecked && loc != null) {
+            launchChecked = true
+            launchSpotId = SpotSearch.spotAt(spots, loc)?.id
+        }
+        launchSpotId?.let { id ->
+            val launched = repos.spots.get(id)
+            if (launched == null || (loc != null && Geo.distanceM(loc, launched.location) > launched.radiusM * 2)) launchSpotId = null
+        }
+        val nearby = loc?.let { SpotSearch.spotAt(spots, it) }?.takeUnless { it.id == launchSpotId }
+        val target = _destination.value ?: nearby
             ?: _certifiedVisit.value?.let { repos.spots.get(it.spotId) }
         val already = target != null &&
             (_certifiedVisit.value?.spotId == target.id || finishedSpotId == target.id)

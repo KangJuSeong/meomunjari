@@ -27,7 +27,24 @@ internal object PleosLog {
     fun call(id: Int, api: String, args: String) = i("→ #$id $api($args)")
     fun result(id: Int, api: String, values: List<Any?>) = i("← #$id $api = ${fmt(values)}")
     fun event(id: Int, api: String, values: List<Any?>) = d("⇠ #$id $api = ${fmt(values)}")
-    fun error(id: Int, api: String, t: Throwable) = w("✗ #$id $api: ${t.javaClass.simpleName}: ${t.message}", t)
+    fun error(id: Int, api: String, t: Throwable) =
+        if (isUnsupported(t)) {
+            // 이 차(또는 에뮬레이터)에 없는 속성은 정상 상황이다. 앱은 대체 값을 쓰므로 경고·스택 없이 한 줄만 남긴다.
+            i("– #$id $api: 이 차에서 지원하지 않거나 지금 읽을 수 없음 (${t.message?.take(120)}) → 대체 값 사용")
+        } else {
+            w("✗ #$id $api: ${t.javaClass.simpleName}: ${t.message}", t)
+        }
+
+    /** 차가 지원하지 않는 속성, 지금 값이 없는 속성(예: 공조가 꺼져 있을 때 목표 온도) 같은 '예상된 실패'인가. */
+    fun isUnsupported(t: Throwable): Boolean {
+        val text = generateSequence(t) { it.cause }.take(4)
+            .joinToString(" ") { "${it.javaClass.name} ${it.message.orEmpty()}" }
+        return UNSUPPORTED_HINTS.any { text.contains(it, ignoreCase = true) }
+    }
+
+    private val UNSUPPORTED_HINTS = listOf(
+        "NOT_SUPPORTED", "not supported", "not in carPropertyConfig", "PropertyNotAvailableException", "is not available",
+    )
 
     /** 번호 없이 한 줄로 남길 때 (위치 콜백, 내비 이벤트 등). */
     fun info(message: String) = i(message)

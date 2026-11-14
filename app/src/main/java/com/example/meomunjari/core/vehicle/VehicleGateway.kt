@@ -25,7 +25,8 @@ data class VehicleSnapshot(
     val hvacOn: Boolean = false,
     val hvacTargetC: Float? = null,
     val wiperActive: Boolean = false,
-    val windowOpenPct: Int = 0,
+    /** 창문별 현재 여는 단계(0~10). 키는 WindowValue 이름. */
+    val windowLevelByArea: Map<String, Int> = emptyMap(),
     val ambientOn: Boolean = false,
     val ambientBrightness: Int = 0,
     val doorOpen: Boolean = false,

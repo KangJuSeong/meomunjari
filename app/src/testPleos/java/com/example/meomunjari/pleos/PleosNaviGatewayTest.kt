@@ -68,6 +68,42 @@ class PleosNaviGatewayTest {
     }
 
     @Test
+    fun silentNaviLaunchesMapAppAndRetriesOnce() = runBlocking {
+        var launched = 0
+        val waking = PleosNaviGateway(sdk, launchNaviApp = { launched++; true }, noResponseMs = 50, appStartMs = 10, bringBackSettleMs = 10)
+        doAnswer { it.getArgument<() -> Unit>(0).invoke(); Unit }.whenever(sdk).initialize(any(), any())
+        waking.start()
+        val captor = argumentCaptor<NaviHelperEventListener>()
+        verify(sdk).addListener(captor.capture())
+        val request = async(start = CoroutineStart.UNDISPATCHED) { waking.requestRoute(camp) }
+        // 지도 앱이 꺼져 있어 아무 이벤트도 없다 → 지도 앱을 띄우고 한 번 더 요청
+        kotlinx.coroutines.delay(150)
+        assertEquals(1, launched)
+        verify(sdk, times(2)).requestRoute(any())
+        captor.firstValue.onRoutingCompleted()
+        assertTrue(request.await())
+        assertEquals(camp, waking.destination.value)
+    }
+
+    @Test
+    fun respondingNaviIsNotRelaunched() = runBlocking {
+        var launched = 0
+        val waking = PleosNaviGateway(sdk, launchNaviApp = { launched++; true }, noResponseMs = 50, appStartMs = 10, bringBackSettleMs = 10)
+        doAnswer { it.getArgument<() -> Unit>(0).invoke(); Unit }.whenever(sdk).initialize(any(), any())
+        waking.start()
+        val captor = argumentCaptor<NaviHelperEventListener>()
+        verify(sdk).addListener(captor.capture())
+        val request = async(start = CoroutineStart.UNDISPATCHED) { waking.requestRoute(camp) }
+        // 내비가 기존 경로 취소로 응답했고, 경로 탐색은 오래 걸린다
+        captor.firstValue.onRouteCancelled()
+        kotlinx.coroutines.delay(150)
+        assertEquals(0, launched)
+        captor.firstValue.onRouteEnded()
+        assertTrue(request.await())
+        verify(sdk, times(1)).requestRoute(any())
+    }
+
+    @Test
     fun previousRouteCancellationDuringRequestIsIgnored() = runBlocking {
         val listener = connect()
         val request = async(start = CoroutineStart.UNDISPATCHED) { gateway.requestRoute(camp) }

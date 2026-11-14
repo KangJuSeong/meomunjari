@@ -144,7 +144,7 @@ class DomainTest {
         val master = SettingCompatibility.master(seed.presets.filter { it.spotId == "s-003" }, seed.user.nickname)
         assertNotNull(master)
         assertEquals("별헌터", master!!.ownerNickname)
-        assertEquals("22°C, 시트 운전석 등받이 60%, 창문 5% 열기, 조명 끄기", SettingCompatibility.summary(master))
+        assertEquals("22°C, 시트 운전석 등받이 60%, 창문 운전석 1단 열기, 나머지 닫기, 조명 끄기", SettingCompatibility.summary(master))
     }
 
     @Test
@@ -183,6 +183,16 @@ class DomainTest {
         assertEquals(mapOf("ROW_1_LEFT" to 25, "ROW_1_RIGHT" to 15), angles())
         select(null)
         assertTrue(angles().isEmpty())
+    }
+
+    @Test
+    fun windowLabelListsOpenWindowsByLevel() {
+        val base = seed.user.mySetting.copy(windowLevelByArea = emptyMap())
+        assertEquals("모두 닫기", SettingCompatibility.windowLabel(base))
+        assertEquals("운전석 3 · 뒷좌석 우측 1단 열기, 나머지 닫기",
+            SettingCompatibility.windowLabel(base.copy(windowLevelByArea = mapOf("ROW_2_RIGHT" to 1, "ROW_1_LEFT" to 3, "ROW_1_RIGHT" to 0))))
+        val all = base.copy(windowLevelByArea = WindowPosition.entries.associate { it.area to 10 })
+        assertEquals("운전석 10 · 조수석 10 · 뒷좌석 좌측 10 · 뒷좌석 우측 10단 열기", SettingCompatibility.windowLabel(all))
     }
 
     @Test

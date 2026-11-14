@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import com.example.meomunjari.core.vehicle.ApplyStatus
 import com.example.meomunjari.domain.SeatPosition
+import com.example.meomunjari.domain.WindowPosition
 import com.example.meomunjari.ui.LocalAppContainer
 import com.example.meomunjari.ui.components.KeyValue
 import com.example.meomunjari.ui.components.Pill
@@ -156,8 +157,21 @@ fun MyScreen() {
                     LabeledSlider("목표 온도", "${s.targetTempC.roundToInt()}°C", s.targetTempC.toFloat(), 16f..28f, 11) { v ->
                         updateSetting { it.copy(targetTempC = v.roundToInt().toDouble()) }
                     }
-                    LabeledSlider("창문 열기", "${s.windowOpenPct}%", s.windowOpenPct.toFloat(), 0f..30f, 5) { v ->
-                        updateSetting { it.copy(windowOpenPct = v.roundToInt()) }
+                    Text("창문 열기 · 0 닫힘 ~ ${WindowPosition.MAX_LEVEL} 활짝", style = MaterialTheme.typography.labelLarge)
+                    WindowPosition.entries.forEach { w ->
+                        val level = s.windowLevelByArea[w.area] ?: 0
+                        LabeledSlider(
+                            w.label,
+                            if (level == 0) "닫힘" else "${level}단",
+                            level.toFloat(),
+                            0f..WindowPosition.MAX_LEVEL.toFloat(),
+                            WindowPosition.MAX_LEVEL - 1,
+                        ) { v ->
+                            val next = v.roundToInt()
+                            updateSetting {
+                                it.copy(windowLevelByArea = if (next == 0) it.windowLevelByArea - w.area else it.windowLevelByArea + (w.area to next))
+                            }
+                        }
                     }
                     Text("시트 메모리", style = MaterialTheme.typography.labelLarge)
                     // 차가 알려준 메모리 번호 범위만 보여준다(예: 아이오닉 5 에뮬레이터는 1~2번). 모르면 1~3번.

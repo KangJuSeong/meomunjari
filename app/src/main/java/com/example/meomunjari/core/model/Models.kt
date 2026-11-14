@@ -166,7 +166,7 @@ data class MeasurementReport(
     private fun hours(h: Double): String = if (h % 1.0 == 0.0) "${h.toInt()}" else "${Math.round(h * 10) / 10.0}"
 }
 
-/** 차박 세팅. 내 세팅·계절 기본값·고수 세팅이 모두 이 형태. */
+/** 차박 세팅. 내 세팅·고수 세팅이 모두 이 형태. */
 @Serializable
 data class SettingPreset(
     val id: String,
@@ -182,7 +182,11 @@ data class SettingPreset(
      * 없으면 그 좌석은 건드리지 않는다. 차마다 등받이 위치 범위가 달라 적용할 때 그 차의 범위로 바꾼다.
      */
     val backrestPctBySeat: Map<String, Int> = emptyMap(),
-    val windowOpenPct: Int = 0,
+    /**
+     * 창문별 여는 단계(0 = 닫힘 ~ 10 = 활짝). 키는 WindowValue 이름(ROW_1_LEFT 등), 없는 창문은 닫는다.
+     * 차마다 창문 위치 범위가 달라(Pleos 에뮬레이터는 0~10) 적용할 때 그 차의 범위로 바꾼다.
+     */
+    val windowLevelByArea: Map<String, Int> = emptyMap(),
     /** 열 도어 위치(Vehicle SDK DoorValue 이름). null이면 도어는 건드리지 않는다. */
     val openDoorArea: String? = null,
     val ambientOn: Boolean = false,
