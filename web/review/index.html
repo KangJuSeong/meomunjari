@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f2f4f6">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; form-action 'none'; object-src 'none'; img-src 'self' blob:">
+  <title>차박 후기 작성 · 머문자리</title>
+  <link rel="stylesheet" href="./review.css">
+  <script defer src="./review.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand"><span class="map-pin" aria-hidden="true"></span>머문자리</div>
+      <h1>차박 후기</h1>
+      <p>머문 곳의 사진과 하룻밤 이야기를 남겨 보세요.</p>
+    </header>
+    <noscript>사진과 후기를 미리 보려면 브라우저에서 자바스크립트를 켜 주세요.</noscript>
+    <form id="review-form" autocomplete="off" hidden>
+      <section class="card">
+        <fieldset>
+          <legend>이번 차박은 어땠나요?</legend>
+          <div class="rating">
+            <label><input type="radio" name="rating" value="1" aria-label="1점" required><span aria-hidden="true">☆</span></label>
+            <label><input type="radio" name="rating" value="2" aria-label="2점"><span aria-hidden="true">☆</span></label>
+            <label><input type="radio" name="rating" value="3" aria-label="3점"><span aria-hidden="true">☆</span></label>
+            <label><input type="radio" name="rating" value="4" aria-label="4점"><span aria-hidden="true">☆</span></label>
+            <label><input type="radio" name="rating" value="5" aria-label="5점"><span aria-hidden="true">☆</span></label>
+          </div>
+        </fieldset>
+        <div class="field">
+          <label for="spot">머문 장소 <small>선택</small></label>
+          <input id="spot" type="text" maxlength="100" placeholder="스팟 이름">
+        </div>
+        <div class="field">
+          <label for="photos">차박 사진 <small>선택 · 최대 5장</small></label>
+          <div class="photo-picker">
+            <span aria-hidden="true">＋</span> 사진 고르기
+            <input id="photos" type="file" accept="image/*" multiple aria-label="차박 사진 고르기" aria-describedby="photo-status">
+          </div>
+          <ul class="photos" id="photo-list" aria-label="선택한 사진"></ul>
+          <p id="photo-status" role="status"></p>
+        </div>
+        <div class="field">
+          <label for="details">상세 후기</label>
+          <textarea id="details" rows="4" required maxlength="2000" placeholder="밤에는 조용했나요? 주차할 자리나 아침 풍경은 어땠는지 들려주세요."></textarea>
+        </div>
+      </section>
+      <p class="note">사진과 글은 이 화면에서만 미리 볼 수 있어요. 새로고침하면 사라져요.</p>
+      <button class="primary" type="submit">작성한 후기 미리보기</button>
+    </form>
+    <section id="preview" hidden aria-labelledby="preview-title">
+      <article class="card">
+        <h2 id="preview-title" tabindex="-1">작성한 후기 미리보기</h2>
+        <p id="preview-rating"></p>
+        <h3 id="preview-spot"></h3>
+        <p id="preview-details"></p>
+        <ul class="photos" id="preview-photos" aria-label="후기 사진"></ul>
+      </article>
+      <p class="note">미리보기는 이 휴대폰에서만 보여요. 차량 리뷰에는 등록되지 않아요.</p>
+      <button class="primary" type="button" id="edit">다시 수정하기</button>
+    </section>
+  </main>
+</body>
+</html>
