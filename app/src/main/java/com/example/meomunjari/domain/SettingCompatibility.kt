@@ -86,15 +86,15 @@ object SettingCompatibility {
      */
     fun forOthers(preset: SettingPreset): SettingPreset = preset.copy(seatMemorySlot = null)
 
-    /** "운전석 3 · 조수석 1단 열기, 나머지 닫기" / "모두 닫기" */
+    /** "운전석 3단 · 조수석 1단 · 나머지 닫기" / "모두 닫기" */
     fun windowLabel(preset: SettingPreset): String {
         val open = WindowPosition.entries.mapNotNull { w ->
-            preset.windowLevelByArea[w.area]?.takeIf { it > 0 }?.let { "${w.label} $it" }
+            preset.windowLevelByArea[w.area]?.takeIf { it > 0 }?.let { "${w.label} ${it}단" }
         }
         return when {
             open.isEmpty() -> "모두 닫기"
-            open.size == WindowPosition.entries.size -> open.joinToString(" · ") + "단 열기"
-            else -> open.joinToString(" · ") + "단 열기, 나머지 닫기"
+            open.size == WindowPosition.entries.size -> open.joinToString(" · ")
+            else -> (open + "나머지 닫기").joinToString(" · ")
         }
     }
 

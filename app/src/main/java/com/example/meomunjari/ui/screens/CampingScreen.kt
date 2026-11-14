@@ -27,6 +27,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.meomunjari.core.vehicle.ApplyStatus
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import com.example.meomunjari.core.vehicle.ApplyItemResult
+import com.example.meomunjari.ui.components.ThinDivider
 import com.example.meomunjari.ui.LocalAppContainer
 import com.example.meomunjari.ui.components.EmptyState
 import com.example.meomunjari.ui.components.Pill
@@ -112,20 +116,9 @@ fun CampingScreen(onFinished: () -> Unit) {
                 }
 
                 SectionCard(title = "적용된 세팅") {
-                    state.applyResults.forEach { r ->
-                        Row {
-                            Text(r.item.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                            Text(
-                                listOf(r.status.label, r.detail).filter { it.isNotBlank() }.joinToString(" · "),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = when (r.status) {
-                                    ApplyStatus.APPLIED -> MColors.Good
-                                    ApplyStatus.PARTIAL -> MColors.Orange
-                                    ApplyStatus.FAILED -> MColors.Danger
-                                    else -> MColors.Grey500
-                                },
-                            )
-                        }
+                    state.applyResults.forEachIndexed { i, r ->
+                        if (i > 0) ThinDivider()
+                        AppliedItemRow(r)
                     }
                 }
             }
@@ -180,6 +173,39 @@ fun CampingScreen(onFinished: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(96.dp))
+            }
+        }
+    }
+}
+
+/**
+ * 적용된 세팅 한 줄: 왼쪽에 항목 이름, 오른쪽에 결과 배지와 세부 내용을 한 줄씩.
+ * 세부 내용은 " · "로 이어진 문구를 나눠 보여주고, "이름: 이유"처럼 안 된 부분은 주황색으로 표시한다.
+ */
+@Composable
+private fun AppliedItemRow(r: ApplyItemResult) {
+    val color = when (r.status) {
+        ApplyStatus.APPLIED -> MColors.Good
+        ApplyStatus.PARTIAL -> MColors.Orange
+        ApplyStatus.FAILED -> MColors.Danger
+        else -> MColors.Grey500
+    }
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.Top) {
+        Text(
+            r.item.label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MColors.Grey600,
+            modifier = Modifier.width(96.dp).padding(top = 2.dp),
+        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Pill(r.status.label, color)
+            r.detail.split(" · ").filter { it.isNotBlank() }.forEach { part ->
+                val failed = part.contains(": ")
+                Text(
+                    if (failed) "✕ $part" else part,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (failed) MColors.Orange else MColors.Text,
+                )
             }
         }
     }

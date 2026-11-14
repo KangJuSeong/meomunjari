@@ -41,6 +41,11 @@ class PleosNaviGateway internal constructor(
     private val launchNaviApp: () -> Boolean = { false },
     /** 지도 앱이 준비되면 이 앱을 다시 앞으로 올린다(뒤에 있으면 얼려져 내비 이벤트를 놓친다). */
     private val bringAppBack: () -> Unit = {},
+    /** 목적지 도착 등으로 이 앱을 앞으로 올릴 때 쓴다. */
+    private val showApp: () -> Unit = bringAppBack,
+    /** 길안내가 시작/끝날 때. 안내 중에는 앱이 얼려지지 않게 포그라운드 서비스를 켜 둔다. */
+    private val onGuidanceStarted: (String) -> Unit = {},
+    private val onGuidanceEnded: () -> Unit = {},
     /** 경로를 요청한 뒤 내비가 아무 이벤트도 보내지 않으면 지도 앱이 꺼진 것으로 보는 시간. */
     private val noResponseMs: Long = NO_RESPONSE_MS,
     /** 지도 앱을 띄운 뒤 다시 요청하기까지 기다리는 시간. */
@@ -52,6 +57,13 @@ class PleosNaviGateway internal constructor(
         NaviHelper(context.applicationContext),
         { launchNaviApp(context.applicationContext) },
         { bringAppBack(context.applicationContext) },
+        {
+            // 직접 띄우기를 먼저 시도하고(허용되는 차에서는 바로 넘어옴), 막히는 경우를 위해 도착 알림도 띄운다.
+            bringAppBack(context.applicationContext)
+            GuidanceKeepAliveService.notifyArrived(context.applicationContext)
+        },
+        onGuidanceStarted = { name -> GuidanceKeepAliveService.start(context.applicationContext, name) },
+        onGuidanceEnded = { GuidanceKeepAliveService.stop(context.applicationContext) },
     )
 
     private val _destination = MutableStateFlow<NaviDestination?>(null)
@@ -166,6 +178,7 @@ class PleosNaviGateway internal constructor(
     }
 
     private fun clearRoute() {
+        onGuidanceEnded()
         synchronized(routeState) {
             pending?.complete(false)
             pending = null
@@ -218,6 +231,8 @@ class PleosNaviGateway internal constructor(
                 poiId = "", poiSubId = "0", address = destination.address,
             )
             naviResponded = false
+            // 포그라운드 서비스는 앱이 앞에 있을 때만 시작할 수 있다. 내비가 앞으로 나오기 전, 요청하는 지금 켠다.
+            onGuidanceStarted(destination.name)
             PleosLog.info("→ NaviHelper.requestRoute(${PleosLog.fmt(route)})")
             navi.requestRoute(route)
             // 에뮬레이터를 막 켠 뒤처럼 지도 앱이 안 떠 있으면 요청이 아무 응답 없이 사라진다.
@@ -245,7 +260,10 @@ class PleosNaviGateway internal constructor(
             val confirmed = result == true
             PleosLog.info("← NaviHelper 경로 결과: ${if (confirmed) "성공" else "실패 또는 ${ROUTE_CONFIRM_TIMEOUT_MS / 1000}초 시간 초과"} (${destination.name})")
             synchronized(routeState) {
-                if (!confirmed || pending !== request) return@withLock false
+                if (!confirmed || pending !== request) {
+                    if (_destination.value == null) onGuidanceEnded()
+                    return@withLock false
+                }
                 _destination.value = destination
                 true
             }
@@ -258,6 +276,11 @@ class PleosNaviGateway internal constructor(
         } finally {
             synchronized(routeState) { pending = null }
         }
+    }
+
+    override fun returnToApp() {
+        PleosLog.info("목적지 도착 → 내비 화면에서 이 앱으로 돌아옴")
+        showApp()
     }
 
     override fun cancelRoute() {

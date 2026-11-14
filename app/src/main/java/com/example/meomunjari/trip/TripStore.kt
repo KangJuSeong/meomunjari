@@ -266,6 +266,8 @@ class TripStore(
         repos.spots.recordVisit(spot.id, car.vehicleClass, date.toString())
         _certifiedVisit.value = visit
         if (_destination.value?.id == spot.id) {
+            // 길안내로 도착했으면 내비 화면에 머물지 않고 차박 모드 화면으로 넘어오게 한다(안내를 끄기 전에).
+            gateways.navi.returnToApp()
             gateways.navi.cancelRoute()
             _destination.value = null
         }

@@ -42,10 +42,25 @@
         <package android:name="ai.umos.maps.android.navigation.app" />
     </queries>
 
+    <!-- 길안내 중 내비가 앞에 있어도 이 앱이 얼려지지 않게 하는 포그라운드 서비스 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 목적지 도착 알림. 앱이 뒤에 있으면 화면을 직접 띄울 수 없어 전체 화면 알림으로 연다. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
     <application>
         <uses-library
             android:name="android.car"
             android:required="false" />
+        <service
+            android:name="com.example.meomunjari.pleos.GuidanceKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="길안내 중 차박지 도착을 감지해 차박 모드 화면으로 돌아오기 위해 앱을 유지" />
+        </service>
     </application>
 
 </manifest>
