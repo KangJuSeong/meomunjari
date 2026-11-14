@@ -77,6 +77,18 @@ class DomainTest {
     }
 
     @Test
+    fun reviewQrRequiresConnectedParkGearWithoutDriving() {
+        val parked = VehicleSnapshot(connected = true, gear = Gear.PARK, speedKmh = 0f)
+
+        assertTrue(DriveGuard.canShowReviewQr(parked))
+        assertFalse(DriveGuard.canShowReviewQr(parked.copy(gear = Gear.NEUTRAL)))
+        assertFalse(DriveGuard.canShowReviewQr(parked.copy(gear = Gear.NEUTRAL, speedKmh = 2f)))
+        assertFalse(DriveGuard.canShowReviewQr(parked.copy(gear = Gear.UNKNOWN, speedKmh = null)))
+        assertFalse(DriveGuard.canShowReviewQr(parked.copy(connected = false)))
+        assertFalse(DriveGuard.canShowReviewQr(parked.copy(speedKmh = 10f)))
+    }
+
+    @Test
     fun arrivalNeedsRadiusParkAndHold() {
         val spot = seed.spots.first { it.id == "s-003" }
         val near = Geo.offsetNorth(spot.location, 60.0)
