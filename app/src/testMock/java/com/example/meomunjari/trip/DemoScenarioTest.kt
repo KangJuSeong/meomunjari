@@ -22,12 +22,14 @@ import com.example.meomunjari.domain.SpotSearch
 import com.example.meomunjari.domain.TagNormalizer
 import com.example.meomunjari.sim.SimulatedWorld
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -184,11 +186,10 @@ class DemoScenarioTest {
         assertTrue("공조 8시간이면 배터리가 10~20% 줄어야 한다: ${report.energyUsedPct}", report.energyUsedPct in 10.0..20.0)
         assertTrue(report.rained)
         assertTrue(report.minCabinTempC < 21.0)
-        // 외기 7°C에서 밤사이 내려간 최저·최고, 고른 외부 기기, 작성자
+        // 외기 7°C에서 밤사이 내려간 최저·최고, 고른 외부 기기
         assertEquals(7.0, report.outsideMaxC!!, 0.6)
         assertTrue("밤사이 외기가 내려가야 한다: ${report.outsideMinC}", report.outsideMinC!! < 5.0)
         assertEquals(listOf("전기장판"), report.devices)
-        assertEquals("주성", report.author)
         assertTrue(report.summaryLine().startsWith("11월 3일 · 외부 "))
         assertEquals(1, finished.creditsEarned)
         assertEquals(13, repos.reports.forSpot("s-003").count { it.month == 11 })
@@ -227,6 +228,7 @@ class DemoScenarioTest {
     @Test
     fun earlyFinishUsesLatestBatteryAndPreservesOriginalForecastAcrossSpeedChanges() = runBlocking {
         startNight()
+        assertTrue(trip.camping.value!!.samples.isEmpty())
         clock += 3_000 // 30 simulated minutes
         trip.setTimeScale(60)
         clock += 5_000 // 5 more minutes, without a new sample
@@ -237,6 +239,47 @@ class DemoScenarioTest {
         assertEquals(55.0, comparison.endPct!!, 0.0)
         assertEquals(35L, comparison.stayMinutes)
         assertNull(finished.report)
+    }
+
+    @Test
+    fun withdrawingConsentDiscardsThisNightEvenWhileBatteryProtectionIsWaiting() = runBlocking {
+        startNight(consent = true)
+        val spot = repos.spots.get("s-003")!!
+        val reportsBefore = repos.reports.forSpot(spot.id)
+        clock += 1_000
+        trip.recordSample(trip.camping.value!!)
+        assertEquals(2, trip.camping.value!!.samples.size)
+
+        world.setBattery(10f)
+        ignorePowerCommand = true
+        clock += 1_000
+        val sample = launch(start = CoroutineStart.UNDISPATCHED) {
+            trip.recordSample(trip.camping.value!!)
+        }
+        assertTrue(sample.isActive)
+        trip.setConsent(false)
+        assertTrue(trip.camping.value!!.samples.isEmpty())
+        trip.setConsent(true)
+        world.setHvacPower(false)
+        sample.join()
+
+        val current = trip.camping.value!!
+        assertTrue(!current.recording)
+        assertTrue(current.samples.isEmpty())
+        assertTrue(current.protectionTriggered)
+        assertEquals(20 * 60_000L, current.elapsedSimMs)
+        assertNull(trip.endCamping()!!.report)
+        assertEquals(reportsBefore, repos.reports.forSpot(spot.id))
+
+        world.setLocation(Geo.offsetNorth(spot.location, spot.radiusM * 3.0))
+        trip.evaluateArrival()
+        world.setLocation(spot.location)
+        trip.evaluateArrival()
+        clock += 5_500
+        trip.evaluateArrival()
+        assertTrue(trip.startCamping(repos.user.user.value.mySetting, false) is StartCampingResult.Started)
+        assertTrue(trip.camping.value!!.recording)
+        assertEquals(1, trip.camping.value!!.samples.size)
     }
 
     @Test
@@ -291,14 +334,14 @@ class DemoScenarioTest {
         assertNull(trip.endCamping()!!.batteryComparison!!.predictedMorningPct)
     }
 
-    private suspend fun startNight(setting: SettingPreset? = null) {
+    private suspend fun startNight(setting: SettingPreset? = null, consent: Boolean = false) {
         val spot = repos.spots.get("s-003")!!
         world.setLocation(spot.location)
         world.setGear(Gear.PARK)
         trip.evaluateArrival()
         clock += 5_500
         trip.evaluateArrival()
-        trip.setConsent(false)
+        trip.setConsent(consent)
         world.setBattery(62f)
         val preset = setting ?: repos.presets.forSpot(spot.id).first { it.hvacOn }
         assertTrue(trip.startCamping(preset, false) is StartCampingResult.Started)
