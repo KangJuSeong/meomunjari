@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.meomunjari.R
 import com.example.meomunjari.domain.BadgeProgress
-import com.example.meomunjari.domain.DriveState
+import com.example.meomunjari.domain.DriveGuard
 import com.example.meomunjari.domain.MemberStatus
 import com.example.meomunjari.domain.SettingCompatibility
 import com.example.meomunjari.ui.LocalAppContainer
@@ -63,7 +63,7 @@ private val QUICK_PHRASES = listOf("조용해요", "화장실 깨끗해요", "�
 fun ReviewScreen(onDone: () -> Unit) {
     val c = LocalAppContainer.current
     val finished by c.trip.finished.collectAsStateWithLifecycle()
-    val driveState by c.trip.driveState.collectAsStateWithLifecycle()
+    val vehicle by c.trip.vehicle.collectAsStateWithLifecycle()
     val user by c.repos.user.user.collectAsStateWithLifecycle()
     val spots by c.repos.spots.spots.collectAsStateWithLifecycle()
 
@@ -151,7 +151,7 @@ fun ReviewScreen(onDone: () -> Unit) {
                                 }
                             }
                         }
-                        if (driveState == DriveState.PARKED) {
+                        if (DriveGuard.canShowReviewQr(vehicle)) {
                             MobileReviewQr()
                         }
                     }
