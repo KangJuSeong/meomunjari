@@ -93,19 +93,21 @@ fun CampingScreen(onFinished: () -> Unit) {
                     SectionCard { Text(it, style = MaterialTheme.typography.titleMedium, color = MColors.Warn) }
                 }
 
-                SectionCard(title = "실내 온도", trailing = { Text("10분 간격", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500) }) {
-                    val temps = state.samples.mapNotNull { it.cabinTempC }
-                    if (temps.size >= 2) {
-                        Sparkline(temps)
-                        Text(
-                            "최저 ${(temps.min() * 10).roundToInt() / 10.0}°C · 최고 ${(temps.max() * 10).roundToInt() / 10.0}°C",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    } else {
-                        Text("첫 기록을 기다리는 중이에요", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (state.samples.any { it.wiperActive }) {
-                        Text("🌧️ 와이퍼가 움직였어요. 비 온 밤으로 기록할게요", style = MaterialTheme.typography.bodyMedium, color = MColors.Purple)
+                if (state.recording) {
+                    SectionCard(title = "실내 온도", trailing = { Text("10분 간격", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500) }) {
+                        val temps = state.samples.mapNotNull { it.cabinTempC }
+                        if (temps.size >= 2) {
+                            Sparkline(temps)
+                            Text(
+                                "최저 ${(temps.min() * 10).roundToInt() / 10.0}°C · 최고 ${(temps.max() * 10).roundToInt() / 10.0}°C",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        } else {
+                            Text("첫 기록을 기다리는 중이에요", style = MaterialTheme.typography.bodyMedium)
+                        }
+                        if (state.samples.any { it.wiperActive }) {
+                            Text("🌧️ 와이퍼가 움직였어요. 비 온 밤으로 기록할게요", style = MaterialTheme.typography.bodyMedium, color = MColors.Purple)
+                        }
                     }
                 }
 

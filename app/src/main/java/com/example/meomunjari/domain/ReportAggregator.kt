@@ -21,11 +21,17 @@ data class ReportSummary(
     val rainyCount: Int,
     val minOutsideC: Double? = null,
     val avgDurationHours: Double? = null,
+    val outsideSampleCount: Int = 0,
 ) {
     /** 3건 미만이면 '참고치'. */
     val reliable: Boolean get() = sampleCount >= ReportAggregator.MIN_RELIABLE
 
     val isEmpty: Boolean get() = sampleCount == 0
+
+    // 한 사람의 측정값이 그대로 공개되지 않도록 항목별 집계 건수를 확인한다.
+    val canShowSharedMeasurements: Boolean get() = sampleCount >= 2
+    val canShowSharedEnergy: Boolean get() = energySampleCount >= 2
+    val sharedMinOutsideC: Double? get() = minOutsideC?.takeIf { outsideSampleCount >= 2 }
 
     /** "11월 기준 새벽 실내 최저 9°C · 공조 8시간 사용 시 배터리 14% 소모 · 기록 12회 중 비 온 날 3회" */
     fun headline(): String {
@@ -107,6 +113,7 @@ object ReportAggregator {
             avgDrainPerHour = energy.takeIf { it.isNotEmpty() }?.map { it.drainPerHour }?.average(),
             rainyCount = inMonth.count { it.rained },
             minOutsideC = inMonth.mapNotNull { it.outsideMinC }.minOrNull(),
+            outsideSampleCount = inMonth.count { it.outsideMinC != null },
             avgDurationHours = inMonth.takeIf { it.isNotEmpty() }?.map { it.durationHours }?.average(),
         )
     }

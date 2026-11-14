@@ -108,13 +108,15 @@ class MockReviewRepository(seed: List<Review>) : ReviewRepository {
     override fun add(review: Review) = state.update { it + review }
 }
 
-class MockReportRepository(seed: List<MeasurementReport>) : ReportRepository {
-    private val state = MutableStateFlow(seed)
+class MockReportRepository(private val otherCampers: List<MeasurementReport>) : ReportRepository {
+    private val myReportsBySpot = mutableMapOf<String, MeasurementReport>()
+    private val state = MutableStateFlow(otherCampers)
     override val reports: StateFlow<List<MeasurementReport>> = state.asStateFlow()
     override fun forSpot(spotId: String): List<MeasurementReport> = state.value.filter { it.spotId == spotId }
-    /** 한 스팟에 사용자당 리포트 1개: 같은 작성자의 이전 리포트를 새 것으로 바꾼다. */
-    override fun add(report: MeasurementReport) = state.update { list ->
-        list.filterNot { it.spotId == report.spotId && report.author.isNotBlank() && it.author == report.author } + report
+    @Synchronized
+    override fun saveMine(report: MeasurementReport) {
+        myReportsBySpot[report.spotId] = report
+        state.value = otherCampers + myReportsBySpot.values
     }
 }
 
