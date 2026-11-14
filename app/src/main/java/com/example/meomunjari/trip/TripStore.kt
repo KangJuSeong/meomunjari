@@ -308,7 +308,13 @@ class TripStore(
 
     // ---------- 차박 모드 ----------
 
-    fun setConsent(consent: Boolean) = repos.user.update { it.copy(consentToRecord = consent) }
+    @Synchronized
+    fun setConsent(consent: Boolean) {
+        repos.user.update { it.copy(consentToRecord = consent) }
+        if (!consent) {
+            _camping.update { it?.copy(recording = false, samples = emptyList()) }
+        }
+    }
 
     suspend fun startCamping(
         preset: SettingPreset,
@@ -345,7 +351,7 @@ class TripStore(
             preset = preset,
             applyResults = results,
             recording = user.consentToRecord,
-            samples = listOf(sample(0L)),
+            samples = if (user.consentToRecord) listOf(sample(0L)) else emptyList(),
             initialMorningPct = initialMorningPct,
             plannedMinutes = plannedMinutes,
             wakeAt = wakeAt,
@@ -413,7 +419,7 @@ class TripStore(
         _camping.update { active ->
             if (active == null || active.visit?.id != current.visit?.id) active
             else active.copy(
-                samples = active.samples + s,
+                samples = if (active.recording) active.samples + s else emptyList(),
                 elapsedSimMs = elapsed,
                 protectionTriggered = triggered,
                 notice = notice,
@@ -430,6 +436,7 @@ class TripStore(
         return CampingSample(elapsedMs, snap.cabinTempC, energy, snap.hvacOn, snap.wiperActive, snap.outsideTempC)
     }
 
+    @Synchronized
     fun endCamping(): FinishedCamping? {
         val state = _camping.value ?: return null
         val date = today()
@@ -441,7 +448,7 @@ class TripStore(
             BatteryComparison(state.initialMorningPct, snap.batteryPct?.takeIf { snap.connected && it in 0f..100f }?.toDouble(),
                 campingElapsedMs() / 60_000L, state.plannedMinutes, state.wakeAt?.toString())
         } else null
-        val report = if (state.recording) {
+        val report = if (state.recording && userBefore.consentToRecord) {
             CampingRecorder.buildReport(
                 id = newId("report"),
                 spot = state.spot,
@@ -449,7 +456,6 @@ class TripStore(
                 car = userBefore.car,
                 month = date.monthValue,
                 createdAt = date.toString(),
-                author = userBefore.nickname,
                 devices = state.devices,
             )?.copy(batteryComparison = comparison)
         } else {
@@ -461,7 +467,7 @@ class TripStore(
             val season = ReportAggregator.season(report.month)
             val firstInSeason = repos.reports.forSpot(report.spotId).none { ReportAggregator.season(it.month) == season }
             credits = if (firstInSeason) 2 else 1
-            repos.reports.add(report)
+            repos.reports.saveMine(report)
             repos.user.update { it.copy(reportCount = it.reportCount + 1, reportCredits = it.reportCredits + credits) }
         }
 
@@ -518,7 +524,6 @@ class TripStore(
                 text = text.trim(),
                 createdAt = today().toString(),
                 tags = normalized,
-                reportId = finished.report?.id,
                 presetId = presetId,
             ),
         )
