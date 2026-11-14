@@ -75,7 +75,7 @@ object Fixtures {
 
     private fun review(o: JsonObject) = Review(
         o.s("id")!!, o.s("spotId")!!, o.s("author")!!, o.s("authorGrade").orEmpty(), o.i("rating")!!, o.s("text")!!,
-        o.s("createdAt")!!, o.strings("tags"), o.s("reportId"), o.s("presetId"),
+        o.s("createdAt")!!, o.strings("tags"), o.s("presetId"),
     )
 
     private fun report(o: JsonObject) = MeasurementReport(
@@ -83,7 +83,7 @@ object Fixtures {
         vehicleClass = VehicleClass.valueOf(o.s("vehicleClass")!!), minCabinTempC = o.d("minCabinTempC")!!,
         avgCabinTempC = o.d("avgCabinTempC"), hvacHours = o.d("hvacHours")!!, energyUsedPct = o.d("energyUsedPct")!!,
         durationHours = o.d("durationHours")!!, rained = o.b("rained")!!, createdAt = o.s("createdAt").orEmpty(),
-        author = o.s("author").orEmpty(), outsideMinC = o.d("outsideMinC"), outsideMaxC = o.d("outsideMaxC"),
+        outsideMinC = o.d("outsideMinC"), outsideMaxC = o.d("outsideMaxC"),
         devices = o.strings("devices"),
     )
 

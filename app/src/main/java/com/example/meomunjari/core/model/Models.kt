@@ -85,7 +85,6 @@ data class Review(
     val text: String,
     val createdAt: String,
     val tags: List<String> = emptyList(),
-    val reportId: String? = null,
     val presetId: String? = null,
 )
 
@@ -120,8 +119,6 @@ data class MeasurementReport(
     val rained: Boolean,
     /** 방문 일자 (yyyy-MM-dd). */
     val createdAt: String = "",
-    /** 작성자 닉네임. 스팟당 1개 규칙에 쓴다. */
-    val author: String = "",
     /** 외부 최저·최고 온도. 차가 외기 온도를 주지 않으면 null. */
     val outsideMinC: Double? = null,
     val outsideMaxC: Double? = null,

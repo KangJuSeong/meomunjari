@@ -38,7 +38,8 @@ interface ReviewRepository {
 interface ReportRepository {
     val reports: StateFlow<List<MeasurementReport>>
     fun forSpot(spotId: String): List<MeasurementReport>
-    fun add(report: MeasurementReport)
+    /** 현재 사용자가 같은 스팟을 다시 방문하면 자신의 이전 기록만 교체한다. */
+    fun saveMine(report: MeasurementReport)
 }
 
 interface PresetRepository {

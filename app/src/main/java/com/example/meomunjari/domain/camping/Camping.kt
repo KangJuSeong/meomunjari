@@ -70,7 +70,6 @@ object CampingRecorder {
         car: CarProfile,
         month: Int,
         createdAt: String,
-        author: String = "",
         devices: List<String> = emptyList(),
     ): MeasurementReport? {
         if (samples.size < 2) return null
@@ -107,7 +106,6 @@ object CampingRecorder {
             durationHours = durationH.round1(),
             rained = samples.any { it.wiperActive },
             createdAt = createdAt,
-            author = author,
             outsideMinC = outside.minOrNull()?.round1(),
             outsideMaxC = outside.maxOrNull()?.round1(),
             devices = devices,

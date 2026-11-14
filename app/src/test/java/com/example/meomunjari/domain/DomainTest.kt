@@ -2,6 +2,7 @@ package com.example.meomunjari.domain
 
 import com.example.meomunjari.Fixtures
 import com.example.meomunjari.core.Geo
+import com.example.meomunjari.core.model.MeasurementReport
 import com.example.meomunjari.core.model.LatLng
 import com.example.meomunjari.core.model.PowerType
 import com.example.meomunjari.core.vehicle.ControlItem
@@ -229,7 +230,7 @@ class DomainTest {
         val samples = (0..54).map { i ->
             CampingSample(i * step, 21f, 62f - i * 0.25f, hvacOn = true, wiperActive = false, outsideTempC = 6f - i * 0.15f)
         }
-        val r = CampingRecorder.buildReport("r", spot, samples, seed.user.car, 11, "2026-11-08", author = "주성", devices = listOf("전기장판"))!!
+        val r = CampingRecorder.buildReport("r", spot, samples, seed.user.car, 11, "2026-11-08", devices = listOf("전기장판"))!!
         assertEquals(6.0, r.outsideMaxC!!, 0.01)
         assertEquals(-2.1, r.outsideMinC!!, 0.01)
         assertEquals(listOf("전기장판"), r.devices)
@@ -260,13 +261,30 @@ class DomainTest {
     }
 
     @Test
+    fun oneContributorsMeasurementsStayPrivateEvenInAMixedPowerGroup() {
+        val ev = seed.reports.first { it.powerType == PowerType.EV }
+        val ice = ev.copy(id = "ice", powerType = PowerType.ICE, outsideMinC = null)
+        fun summary(vararg records: MeasurementReport) =
+            ReportAggregator.summarize(records.toList(), ev.spotId, ev.month, PowerType.EV)
+
+        assertFalse(summary(ev).canShowSharedMeasurements)
+        val mixed = summary(ev, ice)
+        assertTrue(mixed.canShowSharedMeasurements)
+        org.junit.Assert.assertNull(mixed.sharedMinOutsideC)
+        assertFalse(mixed.canShowSharedEnergy)
+        assertTrue(summary(ev, ice, ev.copy(id = "other-ev")).canShowSharedEnergy)
+    }
+
+    @Test
     fun oneReportPerUserPerSpot() {
         val repos = Fixtures.seed().toRepositories()
-        val before = repos.reports.forSpot("s-003").size
-        val base = repos.reports.forSpot("s-003").first { it.author == "별헌터" }
-        repos.reports.add(base.copy(id = "new", createdAt = "2026-11-12"))
-        val mine = repos.reports.forSpot("s-003").filter { it.author == "별헌터" }
-        assertEquals(before, repos.reports.forSpot("s-003").size)
-        assertEquals(listOf("new"), mine.map { it.id })
+        val others = repos.reports.forSpot("s-003")
+        val mine = others.first().copy(id = "my-first")
+        repos.reports.saveMine(mine)
+        repos.reports.saveMine(mine.copy(spotId = "s-001", id = "my-other-spot"))
+        val latest = mine.copy(id = "my-second", createdAt = "2026-11-12")
+        repos.reports.saveMine(latest)
+        assertEquals(others + latest, repos.reports.forSpot("s-003"))
+        assertTrue(repos.reports.forSpot("s-001").any { it.id == "my-other-spot" })
     }
 }
