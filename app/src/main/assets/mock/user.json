@@ -16,7 +16,7 @@
     "hvacOn": true,
     "seatMemorySlot": 1,
     "backrestPctBySeat": { "ROW_1_LEFT": 50, "ROW_1_RIGHT": 40 },
-    "windowOpenPct": 0,
+    "windowLevelByArea": {},
     "ambientOn": true,
     "ambientBrightness": 30
   },

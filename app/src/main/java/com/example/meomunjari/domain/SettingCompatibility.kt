@@ -6,13 +6,26 @@ import kotlin.math.roundToInt
 
 enum class PresetSource(val label: String) {
     MINE("내 저장 세팅"),
-    SEASONAL("계절 기본값"),
     MASTER("이 스팟 고수의 세팅"),
 }
 
 data class PresetOption(val source: PresetSource, val preset: SettingPreset)
 
 data class PresetItemView(val item: ControlItem, val valueLabel: String, val supported: Boolean)
+
+/** 따로 여닫을 수 있는 창문. area는 Vehicle SDK WindowValue 이름. */
+enum class WindowPosition(val label: String, val area: String) {
+    FRONT_LEFT("운전석", "ROW_1_LEFT"),
+    FRONT_RIGHT("조수석", "ROW_1_RIGHT"),
+    REAR_LEFT("뒷좌석 좌측", "ROW_2_LEFT"),
+    REAR_RIGHT("뒷좌석 우측", "ROW_2_RIGHT"),
+    ;
+
+    companion object {
+        /** 창문 여는 단계: 0 = 닫힘, 10 = 활짝. Pleos 차량 범위(0~10)와 같다. */
+        const val MAX_LEVEL = 10
+    }
+}
 
 /** 등받이를 따로 정할 수 있는 좌석. area는 Vehicle SDK SeatValue 이름. */
 enum class SeatPosition(val label: String, val area: String) {
@@ -43,7 +56,7 @@ object SettingCompatibility {
             }.toTypedArray(),
         )
         if (seatParts.isNotEmpty()) add(ControlItem.SEAT to seatParts.joinToString(" · "))
-        add(ControlItem.WINDOW to if (preset.windowOpenPct > 0) "${preset.windowOpenPct}% 열기" else "닫기")
+        add(ControlItem.WINDOW to windowLabel(preset))
         preset.openDoorArea?.let { add(ControlItem.DOOR to "${doorLabel(it)} 열기") }
         add(ControlItem.LIGHT to if (preset.ambientOn) "앰비언트 ${preset.ambientBrightness}%" else "끄기")
     }
@@ -60,29 +73,6 @@ object SettingCompatibility {
         }
     }
 
-    /** 여름은 냉방 24°C, 겨울은 난방 21°C, 간절기는 22°C + 환기. */
-    fun seasonalDefault(month: Int, nickname: String = "머문자리"): SettingPreset {
-        val season = ReportAggregator.season(month)
-        return SettingPreset(
-            id = "seasonal-${season.name.lowercase()}",
-            ownerNickname = nickname,
-            title = "${season.label} 기본값",
-            targetTempC = when (season) {
-                Season.SUMMER -> 24.0
-                Season.WINTER -> 21.0
-                else -> 22.0
-            },
-            hvacOn = true,
-            windowOpenPct = when (season) {
-                Season.SUMMER -> 10
-                Season.WINTER -> 0
-                else -> 5
-            },
-            ambientOn = true,
-            ambientBrightness = 20,
-        )
-    }
-
     /** 그 스팟에서 평점이 가장 높은 다른 사용자의 공개 세팅. */
     fun master(presets: List<SettingPreset>, myNickname: String): SettingPreset? =
         presets
@@ -95,6 +85,18 @@ object SettingCompatibility {
      * 내 차에서는 뜻이 없으므로 빼고, 좌석별 등받이 각도만 남긴다.
      */
     fun forOthers(preset: SettingPreset): SettingPreset = preset.copy(seatMemorySlot = null)
+
+    /** "운전석 3 · 조수석 1단 열기, 나머지 닫기" / "모두 닫기" */
+    fun windowLabel(preset: SettingPreset): String {
+        val open = WindowPosition.entries.mapNotNull { w ->
+            preset.windowLevelByArea[w.area]?.takeIf { it > 0 }?.let { "${w.label} $it" }
+        }
+        return when {
+            open.isEmpty() -> "모두 닫기"
+            open.size == WindowPosition.entries.size -> open.joinToString(" · ") + "단 열기"
+            else -> open.joinToString(" · ") + "단 열기, 나머지 닫기"
+        }
+    }
 
     fun doorLabel(area: String): String = when (area) {
         "ROW_1_LEFT" -> "운전석 도어"

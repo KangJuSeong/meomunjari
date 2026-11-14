@@ -67,6 +67,34 @@ class DemoScenarioTest {
     fun tearDown() = scope.cancel()
 
     @Test
+    fun spotParkedAtLaunchIsNotCertifiedUntilCarLeavesAndReturns() {
+        val spot = repos.spots.get("s-003")!!
+        trip.skipSpotParkedAtLaunch = true
+        world.setGear(Gear.PARK)
+        world.setLocation(spot.location)
+        trip.evaluateArrival()
+        clock += 5_500
+        trip.evaluateArrival()
+        assertNull("앱을 켤 때 이미 서 있던 스팟은 자동 인증하지 않는다", trip.certifiedVisit.value)
+
+        // 반경의 2배 밖으로 나갔다가 다시 들어오면 정상 인증
+        world.setLocation(Geo.offsetNorth(spot.location, 2_500.0))
+        trip.evaluateArrival()
+        world.setLocation(Geo.offsetNorth(spot.location, 60.0))
+        trip.evaluateArrival()
+        clock += 5_500
+        trip.evaluateArrival()
+        assertNotNull(trip.certifiedVisit.value)
+    }
+
+    @Test
+    fun presetOpensEachWindowToItsLevel() = runBlocking {
+        val preset = repos.user.user.value.mySetting.copy(windowLevelByArea = mapOf("ROW_1_LEFT" to 3, "ROW_2_RIGHT" to 10))
+        world.apply(preset, includeDoor = false)
+        assertEquals(mapOf("ROW_1_LEFT" to 3, "ROW_1_RIGHT" to 0, "ROW_2_LEFT" to 0, "ROW_2_RIGHT" to 10), world.snapshot.value.windowLevelByArea)
+    }
+
+    @Test
     fun presetBackrestAnglesAreAppliedPerSeat() = runBlocking {
         val preset = repos.user.user.value.mySetting.copy(backrestPctBySeat = mapOf("ROW_1_LEFT" to 60, "ROW_1_RIGHT" to 40))
         val results = world.apply(preset, includeDoor = false).associate { it.item to it.status }

@@ -61,7 +61,6 @@ import com.example.meomunjari.ui.components.ScreenHeader
 import com.example.meomunjari.ui.components.SectionCard
 import com.example.meomunjari.ui.theme.MColors
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 
 /** S5 도착 인증 + 차박 모드 세팅 선택. */
 @Composable
@@ -78,10 +77,8 @@ fun ArrivalScreen(onStarted: () -> Unit, onRegister: () -> Unit, onSunrise: () -
     val scope = rememberCoroutineScope()
 
     val spot = visit?.let { c.repos.spots.get(it.spotId) } ?: arrival?.spot
-    val month = LocalDate.now().monthValue
     val options = buildList {
         add(PresetOption(PresetSource.MINE, user.mySetting))
-        add(PresetOption(PresetSource.SEASONAL, SettingCompatibility.seasonalDefault(month)))
         spot?.let { s ->
             SettingCompatibility.master(presets.filter { it.spotId == s.id }, user.nickname)
                 ?.let { add(PresetOption(PresetSource.MASTER, it)) }

@@ -17,6 +17,7 @@ import com.example.meomunjari.core.vehicle.Gear
 import com.example.meomunjari.core.vehicle.VehicleGateway
 import com.example.meomunjari.core.vehicle.VehicleSnapshot
 import com.example.meomunjari.domain.SettingCompatibility
+import com.example.meomunjari.domain.WindowPosition
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -119,7 +120,7 @@ class SimulatedWorld(
                 battery -= (drainPerHour * simMinutes / 60.0).toFloat()
             }
             val cabin = s.cabinTempC ?: outsideC
-            val goal = if (s.hvacOn) s.hvacTargetC ?: cabin else outsideC + if (s.windowOpenPct > 0) 0f else 3f
+            val goal = if (s.hvacOn) s.hvacTargetC ?: cabin else outsideC + if (s.windowLevelByArea.values.any { it > 0 }) 0f else 3f
             val tau = if (s.hvacOn) 15.0 else 90.0
             val k = 1 - exp(-simMinutes / tau)
             s.copy(
@@ -175,7 +176,7 @@ class SimulatedWorld(
                         seatMemorySlot = preset.seatMemorySlot,
                         seatBackrestPct = s.seatBackrestPct + preset.backrestPctBySeat,
                     )
-                    ControlItem.WINDOW -> s.copy(windowOpenPct = preset.windowOpenPct)
+                    ControlItem.WINDOW -> s.copy(windowLevelByArea = WindowPosition.entries.associate { it.area to (preset.windowLevelByArea[it.area] ?: 0) })
                     ControlItem.DOOR -> s.copy(doorOpen = true)
                     ControlItem.LIGHT -> s.copy(ambientOn = preset.ambientOn, ambientBrightness = preset.ambientBrightness)
                 }

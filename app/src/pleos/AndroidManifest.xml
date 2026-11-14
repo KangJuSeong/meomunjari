@@ -37,6 +37,11 @@
     <!-- 외기 온도 (ENV_OUTSIDE_TEMPERATURE) -->
     <uses-permission android:name="android.car.permission.CAR_EXTERIOR_ENVIRONMENT" />
 
+    <!-- 경로 요청 전 Pleos 내비 지도 앱이 꺼져 있으면 띄우기 위해 패키지를 조회한다. -->
+    <queries>
+        <package android:name="ai.umos.maps.android.navigation.app" />
+    </queries>
+
     <application>
         <uses-library
             android:name="android.car"

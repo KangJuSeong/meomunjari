@@ -21,6 +21,7 @@ import com.example.meomunjari.core.vehicle.VehicleSnapshot
 import com.example.meomunjari.core.vehicle.VehicleRange
 import com.example.meomunjari.domain.SettingCompatibility
 import com.example.meomunjari.domain.SeatPosition
+import com.example.meomunjari.domain.WindowPosition
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -133,20 +134,23 @@ class PleosVehicleGateway(
         read(HVAC::class, hvac, "getHvacTemperatureCurrent", "registerHvacTemperatureCurrent", DRIVER_SEAT) { v ->
             PleosInvoker.number(v)?.let { t -> _snapshot.update { it.copy(cabinTempC = t) } }
         }
-        read(HVAC::class, hvac, "getHvacTemperature", "registerHvacTemperature", DRIVER_SEAT) { v ->
-            // 공조가 꺼져 있으면 목표 온도를 읽을 수 없어 0.0이 들어온다. 설정 가능한 범위 밖 값은 버린다.
-            PleosInvoker.number(v)?.takeIf { it in 10f..35f }?.let { t -> _snapshot.update { it.copy(hvacTargetC = t) } }
-        }
+        // 목표 온도(HVAC_TEMPERATURE_SET)는 공조가 꺼져 있으면 읽을 수 없다(PropertyNotAvailable).
+        // 그래서 변경 구독만 걸어 두고, 한 번 읽기는 공조가 켜진 걸 확인했을 때 한다(readHvacTargetIfOn).
+        invoker.call(HVAC::class, hvac, "registerHvacTemperature", areaHint = DRIVER_SEAT,
+            onResult = ::onHvacTarget, onError = { log("registerHvacTemperature", it) })
         // 공조 전원 상태는 차가 받는 전원 영역을 capability로 확인한 뒤 구독한다(checkCapabilities).
         // 와이퍼(비 여부)
         read(Wiper::class, wiper, "getCurrentWiperState", "registerWiperState") { v ->
             PleosInvoker.flag(v)?.let { on -> _snapshot.update { it.copy(wiperActive = on) } }
         }
-        // 창문
-        read(Window::class, window, "getCurrentWindowPosition", "registerWindowPosition", DRIVER_SEAT) { v ->
-            PleosInvoker.number(v)?.let { p ->
-                val range = boundsOf(CHECK_WINDOW, DRIVER_SEAT) ?: 0..100
-                _snapshot.update { it.copy(windowOpenPct = VehicleRange.toPercent(p.toInt(), range)) }
+        // 창문 4개: 차 위치 → 여는 단계(0~10)
+        WindowPosition.entries.forEach { w ->
+            read(Window::class, window, "getCurrentWindowPosition", "registerWindowPosition", w.area) { v ->
+                PleosInvoker.number(v)?.let { p ->
+                    val range = boundsOf(CHECK_WINDOW, w.area) ?: 0..WindowPosition.MAX_LEVEL
+                    val level = VehicleRange.toPercent(p.toInt(), range) * WindowPosition.MAX_LEVEL / 100
+                    _snapshot.update { it.copy(windowLevelByArea = it.windowLevelByArea + (w.area to level)) }
+                }
             }
         }
     }
@@ -162,6 +166,18 @@ class PleosVehicleGateway(
     ) {
         invoker.call(cls, target, getter, areaHint = area, areaObject = areaObject, onResult = onValue, onError = { log(getter, it) })
         invoker.call(cls, target, register, areaHint = area, areaObject = areaObject, onResult = onValue, onError = { log(register, it) })
+    }
+
+    /** 공조 목표 온도 값. 꺼져 있을 때 들어오는 0.0 같은, 설정 가능한 범위 밖 값은 버린다. */
+    private fun onHvacTarget(values: List<Any?>) {
+        PleosInvoker.number(values)?.takeIf { it in 10f..35f }?.let { t -> _snapshot.update { it.copy(hvacTargetC = t) } }
+    }
+
+    /** 공조가 켜져 있을 때만 목표 온도를 한 번 읽는다. */
+    private fun readHvacTargetIfOn(on: Boolean) {
+        if (!on) return
+        invoker.call(HVAC::class, hvac, "getHvacTemperature", areaHint = DRIVER_SEAT,
+            onResult = ::onHvacTarget, onError = { log("getHvacTemperature", it) })
     }
 
     private fun checkCapabilities() {
@@ -194,7 +210,10 @@ class PleosVehicleGateway(
                 area?.let { areaOf[CHECK_HVAC_POWER] = it }
                 PleosLog.info("공조 전원 영역 = ${PleosLog.fmt(area)}")
                 read(HVAC::class, hvac, "getHvacPowerState", "registerHvacPowerState", areaObject = area) { s ->
-                    PleosInvoker.flag(s)?.let { on -> _snapshot.update { it.copy(hvacOn = on, hvacPowerKnown = true) } }
+                    PleosInvoker.flag(s)?.let { on ->
+                        _snapshot.update { it.copy(hvacOn = on, hvacPowerKnown = true) }
+                        readHvacTargetIfOn(on)
+                    }
                 }
             },
             onError = { log(CHECK_HVAC_POWER, it) },
@@ -244,12 +263,20 @@ class PleosVehicleGateway(
         }
         // 시트: 메모리 슬롯을 불러온 뒤, 좌석별 등받이 각도를 맞춘다.
         ControlItem.SEAT -> applySeatItem(p).status == ApplyStatus.APPLIED
-        // 앱은 창문을 %로 저장하고, 차마다 다른 위치 범위(예: 0~10)로 바꿔 보낸다.
+        // 창문 4개를 각각 맞춘다. 앱은 0~10단계로 저장하고, 차마다 다른 위치 범위로 바꿔 보낸다.
         ControlItem.WINDOW -> {
-            val range = boundsOf(CHECK_WINDOW, DRIVER_SEAT) ?: 0..100
-            val position = VehicleRange.fromPercent(p.windowOpenPct, range, roundUp = true)
-            PleosLog.info("창문 ${p.windowOpenPct}% → 차 위치 $position (범위 ${range.first}~${range.last})")
-            set(Window::class, window, "setWindowPosition", position, DRIVER_SEAT)
+            val known = bounds[CHECK_WINDOW]
+            WindowPosition.entries.map { w ->
+                val level = (p.windowLevelByArea[w.area] ?: 0).coerceIn(0, WindowPosition.MAX_LEVEL)
+                if (known != null && w.area !in known) {
+                    PleosLog.info("${w.label} 창문: 이 차는 이 창문 조절을 지원하지 않아 건너뜀")
+                    return@map true
+                }
+                val range = known?.get(w.area) ?: 0..WindowPosition.MAX_LEVEL
+                val position = VehicleRange.fromPercent(level * 100 / WindowPosition.MAX_LEVEL, range, roundUp = true)
+                PleosLog.info("${w.label} 창문 ${level}단 → 차 위치 $position (범위 ${range.first}~${range.last})")
+                set(Window::class, window, "setWindowPosition", position, w.area)
+            }.all { it }
         }
         ControlItem.DOOR -> set(Door::class, door, "setDoorPosition", DOOR_OPEN_VALUE, p.openDoorArea ?: "ROW_2_RIGHT")
         ControlItem.LIGHT -> {
@@ -321,6 +348,7 @@ class PleosVehicleGateway(
             ?: return false
         val confirmed = PleosInvoker.flag(values) ?: on
         _snapshot.update { it.copy(hvacOn = confirmed, hvacPowerKnown = true) }
+        readHvacTargetIfOn(confirmed)
         return confirmed == on
     }
 
@@ -469,7 +497,10 @@ class PleosVehicleGateway(
             }
         }
 
-    private fun log(method: String, t: Throwable) = Log.w(TAG, "$method: ${t.message}")
+    private fun log(method: String, t: Throwable) {
+        // 미지원·일시 불가는 정상 상황이라 경고로 남기지 않는다(앱은 대체 값을 쓴다).
+        if (PleosLog.isUnsupported(t)) Log.i(TAG, "$method: 미지원/읽을 수 없음 → 대체 값 사용") else Log.w(TAG, "$method: ${t.message}")
+    }
 
     companion object {
         private const val TAG = "PleosVehicle"
