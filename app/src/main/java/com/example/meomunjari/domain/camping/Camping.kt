@@ -22,6 +22,7 @@ data class CampingSample(
 )
 
 data class CampingState(
+    val car: CarProfile,
     val spot: Spot,
     val startedAt: LocalTime,
     val visit: Visit?,
@@ -80,13 +81,7 @@ object CampingRecorder {
         val durationH = (last.simTimeMs - first.simTimeMs) / 3_600_000.0
         if (durationH <= 0) return null
 
-        val energyFirst = first.energyPct
-        val energyLast = last.energyPct
-        val valid = energyFirst != null && energyLast != null && energyFirst in 0f..100f &&
-            energyLast in 0f..energyFirst && samples.zipWithNext().none { (a, b) ->
-                a.energyPct != null && b.energyPct != null && b.energyPct > a.energyPct
-            }
-        val used = if (valid) (energyFirst!! - energyLast!!).toDouble() else 0.0
+        val used = energyUsed(samples)
         val hvacHours = samples.zipWithNext().sumOf { (a, b) ->
             if (b.hvacOn) (b.simTimeMs - a.simTimeMs) / 3_600_000.0 else 0.0
         }
@@ -101,8 +96,8 @@ object CampingRecorder {
             minCabinTempC = temps.min().round1(),
             avgCabinTempC = temps.average().round1(),
             hvacHours = hvacHours.round1(),
-            hasEnergyReading = valid,
-            energyUsedPct = used.round1(),
+            hasEnergyReading = used != null,
+            energyUsedPct = used?.round1() ?: 0.0,
             durationHours = durationH.round1(),
             rained = samples.any { it.wiperActive },
             createdAt = createdAt,
@@ -110,6 +105,16 @@ object CampingRecorder {
             outsideMaxC = outside.maxOrNull()?.round1(),
             devices = devices,
         )
+    }
+
+    private fun energyUsed(samples: List<CampingSample>): Double? {
+        val first = samples.first().energyPct?.takeIf { it in 0f..100f } ?: return null
+        var previous = first
+        for (sample in samples) {
+            val level = sample.energyPct?.takeIf { it in 0f..previous } ?: return null
+            previous = level
+        }
+        return (first - previous).toDouble()
     }
 
     private fun Double.round1(): Double = Math.round(this * 10) / 10.0

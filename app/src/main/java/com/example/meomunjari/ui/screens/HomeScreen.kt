@@ -130,7 +130,7 @@ fun HomeScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatTile(
                         label = ui.user?.car?.powerType?.energyLabel ?: "배터리",
-                        value = ui.vehicle.energyPct?.let { "${it.roundToInt()}%" } ?: "-",
+                        value = ui.user?.car?.powerType?.let(ui.vehicle::energyPct)?.let { "${it.roundToInt()}%" } ?: "-",
                         accent = MColors.Blue,
                         modifier = Modifier.weight(1f),
                     )

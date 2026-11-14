@@ -129,6 +129,7 @@ data class MeasurementReport(
 ) {
     val validEnergy: Boolean get() = hasEnergyReading && durationHours.isFinite() && durationHours > 0 &&
         hvacHours in 0.0..durationHours && energyUsedPct in 0.0..100.0
+    val measuredEnergyUsedPct: Double? get() = energyUsedPct.takeIf { validEnergy }
     val drainPerHour: Double get() = if (durationHours > 0) energyUsedPct / durationHours else 0.0
 
     /** 방문 일자. 형식이 맞지 않으면 null. */
@@ -145,7 +146,7 @@ data class MeasurementReport(
         },
         if (outsideMinC != null && outsideMaxC != null) "외부 ${deg(outsideMinC)}~${deg(outsideMaxC)}°C" else null,
         avgCabinTempC?.let { "실내 ${deg(it)}°C" },
-        "${powerType.energyLabel} −${Math.round(energyUsedPct)}%",
+        energySummary(),
         "${hours(durationHours)}시간",
         devices.takeIf { it.isNotEmpty() }?.joinToString(", "),
     ).joinToString(" · ")
@@ -154,9 +155,12 @@ data class MeasurementReport(
     fun valuesLine(): String = listOfNotNull(
         if (outsideMinC != null && outsideMaxC != null) "외부 ${deg(outsideMinC)}~${deg(outsideMaxC)}°C" else null,
         avgCabinTempC?.let { "실내 ${deg(it)}°C" },
-        "${powerType.energyLabel} −${Math.round(energyUsedPct)}%",
+        energySummary(),
         "${hours(durationHours)}시간",
     ).joinToString(" · ")
+
+    private fun energySummary(): String = measuredEnergyUsedPct?.let { "${powerType.energyLabel} −${Math.round(it)}%" }
+        ?: "${powerType.energyLabel} 소모 측정 안 됨"
 
     private fun deg(c: Double): String = Math.round(c).toInt().let { if (it < 0) "−${-it}" else "$it" }
 

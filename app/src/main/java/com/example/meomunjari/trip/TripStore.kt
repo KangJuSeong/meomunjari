@@ -339,19 +339,20 @@ class TripStore(
             val night = CampingEnergyPlanner.estimateNight(
                 spot, startTime, user.car, snapshot.hvacTargetC?.toDouble(), snapshot.hvacOn, stayMinutes = plannedMinutes,
             )
-            val battery = snapshot.batteryPct
-            if (battery != null && battery in 0f..100f && night != null) (battery - night.drainPct).coerceAtLeast(0.0)
+            val battery = snapshot.energyPct(PowerType.EV)
+            if (battery != null && night != null) (battery - night.drainPct).coerceAtLeast(0.0)
             else null
         } else null
         clockAnchorMs = elapsedMs()
         elapsedAtAnchorMs = 0
         val state = CampingState(
+            car = user.car,
             spot = spot,
             visit = visit,
             preset = preset,
             applyResults = results,
             recording = user.consentToRecord,
-            samples = if (user.consentToRecord) listOf(sample(0L)) else emptyList(),
+            samples = if (user.consentToRecord) listOf(sample(0L, user.car.powerType)) else emptyList(),
             initialMorningPct = initialMorningPct,
             plannedMinutes = plannedMinutes,
             wakeAt = wakeAt,
@@ -399,7 +400,7 @@ class TripStore(
 
     internal suspend fun recordSample(current: CampingState) {
         val elapsed = campingElapsedMs()
-        val s = sample(elapsed)
+        val s = sample(elapsed, current.car.powerType)
         var notice = current.notice
         var triggered = current.protectionTriggered && vehicle.value.connected && vehicle.value.hvacPowerKnown && !s.hvacOn
         val energy = s.energyPct
@@ -427,13 +428,10 @@ class TripStore(
         }
     }
 
-    private fun sample(elapsedMs: Long): CampingSample {
+    private fun sample(elapsedMs: Long, powerType: PowerType): CampingSample {
         val snap = vehicle.value
-        val energy = when (repos.user.user.value.car.powerType) {
-            PowerType.EV -> snap.batteryPct
-            PowerType.ICE -> snap.fuelPct
-        }
-        return CampingSample(elapsedMs, snap.cabinTempC, energy, snap.hvacOn, snap.wiperActive, snap.outsideTempC)
+        return CampingSample(elapsedMs, snap.cabinTempC, snap.energyPct(powerType), snap.hvacOn,
+            snap.wiperActive, snap.outsideTempC)
     }
 
     @Synchronized
@@ -443,9 +441,9 @@ class TripStore(
         val userBefore = repos.user.user.value
         val before = statusBeforeVisit ?: status()
 
-        val comparison = if (userBefore.car.powerType == PowerType.EV) {
+        val comparison = if (state.car.powerType == PowerType.EV) {
             val snap = vehicle.value
-            BatteryComparison(state.initialMorningPct, snap.batteryPct?.takeIf { snap.connected && it in 0f..100f }?.toDouble(),
+            BatteryComparison(state.initialMorningPct, snap.energyPct(PowerType.EV)?.toDouble(),
                 campingElapsedMs() / 60_000L, state.plannedMinutes, state.wakeAt?.toString())
         } else null
         val report = if (state.recording && userBefore.consentToRecord) {
@@ -453,7 +451,7 @@ class TripStore(
                 id = newId("report"),
                 spot = state.spot,
                 samples = state.samples,
-                car = userBefore.car,
+                car = state.car,
                 month = date.monthValue,
                 createdAt = date.toString(),
                 devices = state.devices,
