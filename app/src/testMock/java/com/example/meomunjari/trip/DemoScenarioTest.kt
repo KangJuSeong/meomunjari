@@ -3,6 +3,7 @@ package com.example.meomunjari.trip
 import com.example.meomunjari.Fixtures
 import com.example.meomunjari.core.Gateways
 import com.example.meomunjari.core.Geo
+import com.example.meomunjari.core.location.LocationGateway
 import com.example.meomunjari.core.model.Amenities
 import com.example.meomunjari.core.model.LatLng
 import com.example.meomunjari.core.model.SettingPreset
@@ -26,6 +27,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -67,6 +69,60 @@ class DemoScenarioTest {
 
     @After
     fun tearDown() = scope.cancel()
+
+    @Test
+    fun gpsLossAfterCampingDoesNotAwardAnotherVisitUntilDeparture() = runBlocking {
+        val spot = repos.spots.get("s-003")!!
+        val gps = MutableStateFlow<LatLng?>(spot.location)
+        val locationGateway = object : LocationGateway by world {
+            override val location = gps
+        }
+        val store = TripStore(scope, Gateways(vehicle, locationGateway, world, world, "mock"), repos,
+            TagNormalizer(repos.reference.tags), timeScale, nowMs = { clock }, elapsedMs = { clock })
+        store.evaluateArrival()
+        clock += 5_500
+        store.evaluateArrival()
+        assertTrue(store.startCamping(repos.user.user.value.mySetting, false) is StartCampingResult.Started)
+        assertNotNull(store.endCamping())
+        val ended = repos.spots.get(spot.id)!!
+        val user = repos.user.user.value
+        val points = store.status().points
+
+        for (unavailable in listOf(null, LatLng(95.0, 125.0))) {
+            gps.value = unavailable
+            store.evaluateArrival()
+            gps.value = spot.location
+            store.evaluateArrival()
+            clock += 6_000
+            store.evaluateArrival()
+            assertNull(store.certifiedVisit.value)
+            assertEquals(ended, repos.spots.get(spot.id))
+            assertEquals(user.visits, repos.user.user.value.visits)
+            assertEquals(points, store.status().points)
+        }
+        gps.value = Geo.offsetNorth(spot.location, spot.radiusM * 3.0)
+        store.evaluateArrival()
+        gps.value = spot.location
+        store.evaluateArrival()
+        clock += 5_500
+        store.evaluateArrival()
+        assertNotNull(store.certifiedVisit.value)
+        assertEquals(user.visits.size + 1, repos.user.user.value.visits.size)
+    }
+
+    @Test
+    fun leavingParkBlocksPendingSeatChangesAndManualHvac() = runBlocking {
+        startNight(setting = repos.user.user.value.mySetting)
+        val before = world.snapshot.value
+        val first = async(start = CoroutineStart.UNDISPATCHED) { trip.applyMySeatToCamping() }
+        val queued = async(start = CoroutineStart.UNDISPATCHED) { trip.applyMySeatToCamping() }
+        world.setGear(Gear.DRIVE)
+        assertEquals(ApplyStatus.SKIPPED, first.await()?.status)
+        assertNull(queued.await())
+        assertTrue(!trip.setHvac(!before.hvacOn))
+        assertEquals(before.hvacOn, world.snapshot.value.hvacOn)
+        assertEquals(StartCampingResult.NotParked, trip.startCamping(repos.user.user.value.mySetting, false))
+    }
 
     @Test
     fun spotParkedAtLaunchIsNotCertifiedUntilCarLeavesAndReturns() {

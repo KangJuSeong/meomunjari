@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.meomunjari.domain.DriveGuard
 import com.example.meomunjari.core.vehicle.ApplyStatus
 import com.example.meomunjari.ui.LocalAppContainer
 import com.example.meomunjari.ui.components.EmptyState
@@ -160,7 +161,7 @@ fun CampingScreen(onFinished: () -> Unit) {
                 SectionCard(title = "공조") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(when { !hvacKnown -> "상태 확인 중"; vehicle.hvacOn -> "켜짐"; else -> "꺼짐" }, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Toggle(checked = vehicle.hvacOn, enabled = hvacKnown, onCheckedChange = { on -> scope.launch { trip.setHvac(on) } })
+                        Toggle(checked = vehicle.hvacOn, enabled = hvacKnown && DriveGuard.canControl(vehicle), onCheckedChange = { on -> scope.launch { trip.setHvac(on) } })
                     }
                 }
                 SectionCard(title = "시연 가속") {
