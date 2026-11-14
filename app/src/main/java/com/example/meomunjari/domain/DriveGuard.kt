@@ -25,6 +25,9 @@ object DriveGuard {
     /** 차량 제어는 주차 상태에서만. */
     fun canControl(s: VehicleSnapshot): Boolean = isParked(s)
 
+    fun canShowReviewQr(s: VehicleSnapshot): Boolean =
+        s.connected && s.gear == Gear.PARK && evaluate(s) == DriveState.PARKED
+
     /** 등록하면 현재 위치 방문도 인증하므로 차량 상태로 정차를 확인해야 한다. */
     fun canRegisterSpot(s: VehicleSnapshot): Boolean =
         s.connected && (s.gear != Gear.UNKNOWN || s.speedKmh != null) &&
