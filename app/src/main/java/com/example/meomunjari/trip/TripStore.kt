@@ -208,7 +208,7 @@ class TripStore(
     // ---------- 도착 인증 ----------
 
     internal fun evaluateArrival() {
-        val loc = location.value
+        val loc = location.value?.takeIf { it.lat in -90.0..90.0 && it.lng in -180.0..180.0 }
         val snap = vehicle.value
         val spots = repos.spots.spots.value
         val certified = _certifiedVisit.value
@@ -234,7 +234,7 @@ class TripStore(
         // 차박을 마친 스팟을 떠나면(반경의 2배 밖) 다음 방문을 다시 인증할 수 있다.
         finishedSpotId?.let { id ->
             val done = repos.spots.get(id)
-            if (done == null || loc == null || Geo.distanceM(loc, done.location) > done.radiusM * 2) finishedSpotId = null
+            if (done == null || (loc != null && Geo.distanceM(loc, done.location) > done.radiusM * 2)) finishedSpotId = null
         }
 
         // 앱을 켠 순간의 위치가 스팟 안이면 기억해 두고, 그 스팟은 목적지가 아닐 때 자동 인증 대상에서 뺀다.
@@ -329,6 +329,8 @@ class TripStore(
         val spot = repos.spots.get(visit.spotId) ?: return StartCampingResult.NoSpot
 
         val results: List<ApplyItemResult> = gateways.vehicle.apply(preset, includeDoor)
+        if (!DriveGuard.canControl(vehicle.value)) return StartCampingResult.NotParked
+        if (_certifiedVisit.value?.id != visit.id) return StartCampingResult.NoSpot
         val user = repos.user.user.value
         if (loadedPresetId == preset.id && preset.spotId == spot.id && results.any { it.status == ApplyStatus.APPLIED }) {
             repos.presets.recordLoad(preset.id, user.nickname, visit.id)
@@ -372,22 +374,27 @@ class TripStore(
      * 지금 차박에 쓴 세팅이 내 세팅일 때, 주차 상태일 때만 움직이고 아니면 null을 돌려준다.
      */
     suspend fun applyMySeatToCamping(): ApplyItemResult? {
-        val mine = repos.user.user.value.mySetting
-        val state = _camping.value ?: return null
-        if (state.preset.id != mine.id || !DriveGuard.canControl(vehicle.value)) return null
-        val result = seatMutex.withLock { gateways.vehicle.applySeat(mine) }
-        _camping.update { cur ->
-            cur?.copy(
-                preset = cur.preset.copy(seatMemorySlot = mine.seatMemorySlot, backrestPctBySeat = mine.backrestPctBySeat),
-                applyResults = cur.applyResults.filterNot { it.item == ControlItem.SEAT } + result,
-            )
+        val session = _camping.value ?: return null
+        return seatMutex.withLock {
+            val mine = repos.user.user.value.mySetting
+            if (_camping.value?.visit?.id != session.visit?.id || session.preset.id != mine.id ||
+                !DriveGuard.canControl(vehicle.value)) return@withLock null
+            val result = gateways.vehicle.applySeat(mine)
+            _camping.update { active ->
+                if (active == null || active.visit?.id != session.visit?.id) active
+                else active.copy(
+                    preset = active.preset.copy(seatMemorySlot = mine.seatMemorySlot, backrestPctBySeat = mine.backrestPctBySeat),
+                    applyResults = active.applyResults.filterNot { it.item == ControlItem.SEAT } + result,
+                )
+            }
+            result
         }
-        return result
     }
 
     fun setProtectionThreshold(pct: Int) = _camping.update { it?.copy(protectionThresholdPct = pct) }
 
-    suspend fun setHvac(on: Boolean): Boolean = gateways.vehicle.setHvacPower(on)
+    suspend fun setHvac(on: Boolean): Boolean =
+        DriveGuard.canControl(vehicle.value) && gateways.vehicle.setHvacPower(on)
 
     private suspend fun campingLoop() {
         while (scope.isActive) {

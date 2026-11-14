@@ -16,8 +16,10 @@ import com.example.meomunjari.core.model.SettingPreset
 import com.example.meomunjari.core.vehicle.ApplyItemResult
 import com.example.meomunjari.core.vehicle.ApplyStatus
 import com.example.meomunjari.core.vehicle.ControlItem
+import com.example.meomunjari.core.vehicle.Gear
 import com.example.meomunjari.core.vehicle.VehicleGateway
 import com.example.meomunjari.core.vehicle.VehicleSnapshot
+import com.example.meomunjari.domain.DriveGuard
 import com.example.meomunjari.core.vehicle.VehicleRange
 import com.example.meomunjari.domain.SettingCompatibility
 import com.example.meomunjari.domain.SeatPosition
@@ -47,11 +49,13 @@ class PleosVehicleGateway(
 ) : VehicleGateway {
 
     private val vehicle = Vehicle(context.applicationContext)
-    private val car = AaosCarProperties(context.applicationContext)
     private val invoker = PleosInvoker()
 
     private val _snapshot = MutableStateFlow(VehicleSnapshot())
     override val snapshot: StateFlow<VehicleSnapshot> = _snapshot.asStateFlow()
+    private val car = AaosCarProperties(context.applicationContext) {
+        _snapshot.update { it.copy(gear = Gear.UNKNOWN, speedKmh = null, outsideTempC = null) }
+    }
 
     private val _capabilities = MutableStateFlow<Set<ControlItem>>(emptySet())
     override val capabilities: StateFlow<Set<ControlItem>> = _capabilities.asStateFlow()
@@ -483,6 +487,8 @@ class PleosVehicleGateway(
         areaObject: Any? = null,
     ): List<Any?>? =
         withTimeoutOrNull(3_000) {
+            // 세팅 도중에도 기어와 연결 상태가 바뀐다. 이미 시작한 시트 이동은 정지를 시도한다.
+            if (value != MoveControl.STOP && !DriveGuard.canControl(snapshot.value)) return@withTimeoutOrNull null
             suspendCancellableCoroutine<List<Any?>?> { cont ->
                 val sent = invoker.call(
                     cls, target, method, value, area,

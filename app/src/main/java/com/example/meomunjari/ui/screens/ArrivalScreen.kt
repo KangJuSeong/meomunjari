@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.meomunjari.core.Geo
 import com.example.meomunjari.core.model.SettingPreset
+import com.example.meomunjari.core.vehicle.Gear
 import com.example.meomunjari.core.vehicle.ControlItem
 import com.example.meomunjari.domain.DriveGuard
 import com.example.meomunjari.domain.PresetOption
@@ -134,10 +135,15 @@ fun ArrivalScreen(onStarted: () -> Unit, onRegister: () -> Unit, onSunrise: () -
                 SectionCard {
                     val a = arrival
                     val inRadius = visit != null || a?.withinRadius == true
-                    val parked = visit != null || DriveGuard.isParked(vehicle)
+                    val parked = DriveGuard.isParked(vehicle)
                     CheckRow("📍", "스팟 반경 안이에요", "${Geo.formatDistance((spot?.radiusM ?: 1000).toDouble())} 안" + (a?.distanceM?.let { " · 지금 ${Geo.formatDistance(it)}" } ?: ""), inRadius)
                     ThinDivider()
-                    CheckRow("🅿️", "P단 주차", "지금 ${vehicle.gear.label}단 · 5초 유지", parked)
+                    val parkingDetail = when {
+                        !vehicle.connected -> "차량 연결 확인 중"
+                        vehicle.gear == Gear.UNKNOWN -> if (parked) "속도로 정차 확인 · 5초 유지" else "정차 신호 확인 중"
+                        else -> "지금 ${vehicle.gear.label}단 · 5초 유지"
+                    }
+                    CheckRow("🅿️", "주차 상태", parkingDetail, parked)
                     ThinDivider()
                     CheckRow("✅", if (visit != null) "방문 인증 완료" else "인증을 기다리는 중", if (visit != null) "이제 리뷰를 쓸 수 있어요" else "조건을 모두 채우면 자동으로 인증돼요", visit != null)
                 }
@@ -185,7 +191,7 @@ fun ArrivalScreen(onStarted: () -> Unit, onRegister: () -> Unit, onSunrise: () -
                 }
                 PrimaryButton(
                     text = if (busy) "차에 적용하고 있어요…" else "🌙  차박 모드 시작하기",
-                    enabled = visit != null && !busy,
+                    enabled = visit != null && DriveGuard.canControl(vehicle) && !busy,
                     onClick = { proceed() },
                     modifier = Modifier.fillMaxWidth(),
                 )

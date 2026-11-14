@@ -90,12 +90,40 @@ class DomainTest {
     }
 
     @Test
+    fun invalidParkingSignalsBreakTheArrivalHoldAndBlockControls() {
+        val spot = seed.spots.first { it.id == "s-003" }
+        val parked = VehicleSnapshot(connected = true, gear = Gear.PARK)
+        val speedOnly = parked.copy(gear = Gear.UNKNOWN, speedKmh = 0f)
+        val verifier = ArrivalVerifier()
+
+        listOf(
+            VehicleSnapshot(), parked.copy(connected = false), parked.copy(speedKmh = 2f),
+            parked.copy(gear = Gear.NEUTRAL, speedKmh = 0f), parked.copy(gear = Gear.UNKNOWN),
+            speedOnly.copy(speedKmh = -1f), speedOnly.copy(speedKmh = Float.NaN),
+            speedOnly.copy(speedKmh = Float.POSITIVE_INFINITY),
+        ).forEach { invalid ->
+            verifier.evaluate(spot, spot.location, parked, 0, false)
+            val broken = verifier.evaluate(spot, spot.location, invalid, 5_500, false)
+            assertFalse(broken.parked)
+            assertFalse(broken.justCertified)
+            assertFalse(DriveGuard.canControl(invalid))
+            assertFalse(DriveGuard.canRegisterSpot(invalid))
+            assertFalse(DriveGuard.canShowReviewQr(invalid))
+            assertFalse(verifier.evaluate(spot, spot.location, parked, 6_000, false).certified)
+        }
+        assertTrue(verifier.evaluate(spot, spot.location, speedOnly, 11_000, false).justCertified)
+        assertTrue(DriveGuard.canControl(speedOnly))
+        assertFalse(DriveGuard.canShowReviewQr(speedOnly))
+        assertTrue(DriveGuard.canShowReviewQr(parked))
+    }
+
+    @Test
     fun arrivalNeedsRadiusParkAndHold() {
         val spot = seed.spots.first { it.id == "s-003" }
         val near = Geo.offsetNorth(spot.location, 60.0)
         val v = ArrivalVerifier()
-        val parked = VehicleSnapshot(gear = Gear.PARK, speedKmh = 0f)
-        val driving = VehicleSnapshot(gear = Gear.DRIVE, speedKmh = 0f)
+        val parked = VehicleSnapshot(connected = true, gear = Gear.PARK, speedKmh = 0f)
+        val driving = parked.copy(gear = Gear.DRIVE)
 
         assertFalse(v.evaluate(spot, near, driving, 0, false).certified)
         assertFalse(v.evaluate(spot, near, parked, 1_000, false).certified)

@@ -16,6 +16,7 @@ import com.example.meomunjari.core.vehicle.ControlItem
 import com.example.meomunjari.core.vehicle.Gear
 import com.example.meomunjari.core.vehicle.VehicleGateway
 import com.example.meomunjari.core.vehicle.VehicleSnapshot
+import com.example.meomunjari.domain.DriveGuard
 import com.example.meomunjari.domain.SettingCompatibility
 import com.example.meomunjari.domain.WindowPosition
 import kotlinx.coroutines.CoroutineScope
@@ -169,7 +170,7 @@ class SimulatedWorld(
                 continue
             }
             delay(250)
-            _snapshot.update { s ->
+            val applied = updateParkedVehicle { s ->
                 when (item) {
                     ControlItem.HVAC -> s.copy(hvacOn = preset.hvacOn, hvacTargetC = preset.targetTempC.toFloat())
                     ControlItem.SEAT -> s.copy(
@@ -181,7 +182,8 @@ class SimulatedWorld(
                     ControlItem.LIGHT -> s.copy(ambientOn = preset.ambientOn, ambientBrightness = preset.ambientBrightness)
                 }
             }
-            results += ApplyItemResult(item, ApplyStatus.APPLIED, label)
+            results += if (applied) ApplyItemResult(item, ApplyStatus.APPLIED, label)
+            else ApplyItemResult(item, ApplyStatus.SKIPPED, "주차 상태를 확인할 수 없음")
         }
         return results
     }
@@ -190,16 +192,24 @@ class SimulatedWorld(
         val label = SettingCompatibility.items(preset).firstOrNull { it.first == ControlItem.SEAT }?.second.orEmpty()
         if (ControlItem.SEAT !in _capabilities.value) return ApplyItemResult(ControlItem.SEAT, ApplyStatus.UNSUPPORTED)
         delay(250)
-        _snapshot.update {
+        val applied = updateParkedVehicle {
             it.copy(seatMemorySlot = preset.seatMemorySlot, seatBackrestPct = it.seatBackrestPct + preset.backrestPctBySeat)
         }
-        return ApplyItemResult(ControlItem.SEAT, ApplyStatus.APPLIED, label)
+        return if (applied) ApplyItemResult(ControlItem.SEAT, ApplyStatus.APPLIED, label)
+        else ApplyItemResult(ControlItem.SEAT, ApplyStatus.SKIPPED, "주차 상태를 확인할 수 없음")
     }
 
     override suspend fun setHvacPower(on: Boolean): Boolean {
         if (ControlItem.HVAC !in _capabilities.value) return false
-        _snapshot.update { it.copy(hvacOn = on) }
-        return true
+        return updateParkedVehicle { it.copy(hvacOn = on) }
+    }
+
+    private fun updateParkedVehicle(transform: (VehicleSnapshot) -> VehicleSnapshot): Boolean {
+        while (true) {
+            val current = _snapshot.value
+            if (!DriveGuard.canControl(current)) return false
+            if (_snapshot.compareAndSet(current, transform(current))) return true
+        }
     }
 
     // ---------- NaviGateway ----------
