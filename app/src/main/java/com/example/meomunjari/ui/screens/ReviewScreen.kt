@@ -1,5 +1,6 @@
 package com.example.meomunjari.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,8 +13,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -28,9 +31,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.meomunjari.R
 import com.example.meomunjari.domain.BadgeProgress
+import com.example.meomunjari.domain.DriveState
 import com.example.meomunjari.domain.MemberStatus
 import com.example.meomunjari.domain.SettingCompatibility
 import com.example.meomunjari.ui.LocalAppContainer
@@ -57,6 +63,7 @@ private val QUICK_PHRASES = listOf("조용해요", "화장실 깨끗해요", "�
 fun ReviewScreen(onDone: () -> Unit) {
     val c = LocalAppContainer.current
     val finished by c.trip.finished.collectAsStateWithLifecycle()
+    val driveState by c.trip.driveState.collectAsStateWithLifecycle()
     val user by c.repos.user.user.collectAsStateWithLifecycle()
     val spots by c.repos.spots.spots.collectAsStateWithLifecycle()
 
@@ -144,6 +151,9 @@ fun ReviewScreen(onDone: () -> Unit) {
                                 }
                             }
                         }
+                        if (driveState == DriveState.PARKED) {
+                            MobileReviewQr()
+                        }
                     }
                     SectionCard(title = "한마디 남기기") {
                         ChipFlow {
@@ -210,6 +220,44 @@ fun ReviewScreen(onDone: () -> Unit) {
                 Spacer(Modifier.height(96.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun MobileReviewQr() {
+    var open by remember { mutableStateOf(false) }
+    SecondaryButton(
+        text = "사진·상세 후기 QR 보기",
+        icon = Icons.Filled.QrCode,
+        onClick = { open = true },
+        modifier = Modifier.fillMaxWidth(),
+    )
+    if (open) {
+        AlertDialog(
+            onDismissRequest = { open = false },
+            containerColor = MColors.Card,
+            title = { Text("휴대폰에서 상세 후기 작성") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.review_form_qr),
+                        contentDescription = "휴대폰 상세 후기 폼을 여는 QR 코드",
+                        modifier = Modifier.size(208.dp),
+                    )
+                    Text("휴대폰 카메라로 QR을 찍으면 사진과 후기를 입력할 수 있어요.")
+                    Text(
+                        "체험용 폼이에요. 입력한 내용은 휴대폰에서만 미리 볼 수 있어요. 방문 인증 리뷰는 차량 화면에서 등록해 주세요.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MColors.Grey700,
+                    )
+                }
+            },
+            confirmButton = { SecondaryButton("닫기", onClick = { open = false }) },
+        )
     }
 }
 
