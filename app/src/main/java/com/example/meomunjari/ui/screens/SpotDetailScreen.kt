@@ -110,12 +110,13 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
         val summary = ReportAggregator.summarizeNear(b.reports, spot.id, today, b.user.car.powerType)
         val distance = loc?.let { Geo.distanceM(it, spot.location) }
         val isEv = b.user.car.powerType == PowerType.EV
-        val routeEstimate = if (isEv && vehicle.connected && loc != null && vehicle.batteryPct != null) {
-            CampingEnergyPlanner.estimateDeparture(vehicle.batteryPct.toDouble(), loc, spot, b.user.car,
+        val energyPct = vehicle.energyPct(b.user.car.powerType)
+        val routeEstimate = if (isEv && loc != null && energyPct != null) {
+            CampingEnergyPlanner.estimateDeparture(energyPct.toDouble(), loc, spot, b.user.car,
                 vehicle.efficiencyKmPerKWh?.toDouble(), now, wake, b.user.mySetting.targetTempC,
                 b.user.mySetting.hvacOn)
         } else null
-        val forecast = vehicle.fuelPct?.takeIf { !isEv && vehicle.connected && distance != null && it in 0f..100f }?.let { pct ->
+        val forecast = energyPct?.takeIf { !isEv && distance != null }?.let { pct ->
             EnergyPredictor.fuelForecast(
                 nowPct = pct.toDouble(),
                 routeKm = (distance ?: 0.0) / 1000.0 * Geo.ROAD_FACTOR,

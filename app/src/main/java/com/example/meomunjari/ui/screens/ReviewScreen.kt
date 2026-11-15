@@ -97,7 +97,7 @@ fun ReviewScreen(onDone: () -> Unit) {
                             if (r.outsideMinC != null && r.outsideMaxC != null) "${r.outsideMinC}~${r.outsideMaxC}°C" else "측정 안 됨",
                         )
                         KeyValue("실내 온도", r.avgCabinTempC?.let { "$it°C" } ?: "-")
-                        KeyValue("${r.powerType.energyLabel} 소모", "${r.energyUsedPct}%")
+                        KeyValue("${r.powerType.energyLabel} 소모", r.measuredEnergyUsedPct?.let { "$it%" } ?: "측정 안 됨")
                         KeyValue("차박 시간", "${r.durationHours}시간")
                         KeyValue("외부 기기", r.devices.ifEmpty { listOf("없음") }.joinToString(", "))
                         Text(

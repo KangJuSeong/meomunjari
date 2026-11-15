@@ -12,6 +12,7 @@ import com.example.meomunjari.domain.camping.CampingRecorder
 import com.example.meomunjari.domain.camping.CampingSample
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import com.example.meomunjari.data.mock.toRepositories
@@ -75,6 +76,20 @@ class DomainTest {
         assertEquals(ForecastBasis.SEASONAL_DEFAULT, fallback.basis)
         assertEquals(0.8 * 8, fallback.overnightPct, 0.0001)
         org.junit.Assert.assertNull(EnergyPredictor.fuelForecast(62.0, 0.0, seed.user.car, evSummary, 11))
+    }
+
+    @Test
+    fun remainingEnergyRequiresAReadingFromTheSelectedPowerSource() {
+        val evOnly = VehicleSnapshot(connected = true, batteryPct = 64f)
+        assertNull(evOnly.energyPct(PowerType.ICE))
+        val both = evOnly.copy(fuelPct = 22f)
+        assertEquals(64f, both.energyPct(PowerType.EV)!!, 0f)
+        assertEquals(22f, both.energyPct(PowerType.ICE)!!, 0f)
+        assertNull(both.copy(connected = false).energyPct(PowerType.EV))
+        assertNull(both.copy(batteryPct = null).energyPct(PowerType.EV))
+        assertNull(both.copy(fuelPct = Float.NaN).energyPct(PowerType.ICE))
+        assertNull(both.copy(batteryPct = 101f).energyPct(PowerType.EV))
+        assertEquals(0f, both.copy(fuelPct = 0f).energyPct(PowerType.ICE)!!, 0f)
     }
 
     @Test
@@ -221,6 +236,26 @@ class DomainTest {
         assertEquals(13.9, r.energyUsedPct, 0.1)
         assertEquals(18.3, r.minCabinTempC, 0.05)
         assertTrue(r.rained)
+    }
+
+    @Test
+    fun morningReportDistinguishesNoConsumptionFromUnusableReadings() {
+        val spot = seed.spots.first { it.id == "s-003" }
+        fun report(vararg readings: Float?) = CampingRecorder.buildReport(
+            "night", spot, readings.mapIndexed { index, pct ->
+                CampingSample(index * CampingRecorder.SAMPLE_INTERVAL_SIM_MS, 20f, pct, false, false)
+            }, seed.user.car, 11, "2026-11-14",
+        )!!
+
+        assertEquals(0.0, report(64f, 64f).measuredEnergyUsedPct!!, 0.0)
+        assertEquals(4.0, report(64f, 60f).measuredEnergyUsedPct!!, 0.0)
+        listOf(report(null, null), report(64f, null, 60f), report(50f, 60f, 48f),
+            report(101f, 60f)).forEach {
+            assertNull(it.measuredEnergyUsedPct)
+            assertTrue(it.summaryLine().contains("배터리 소모 측정 안 됨"))
+            assertTrue(it.valuesLine().contains("배터리 소모 측정 안 됨"))
+            assertFalse(it.validEnergy)
+        }
     }
 
     @Test
