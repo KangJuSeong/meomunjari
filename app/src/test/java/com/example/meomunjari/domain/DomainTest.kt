@@ -45,14 +45,14 @@ class DomainTest {
     @Test
     fun demoStep2_reportHeadline() {
         val summary = ReportAggregator.summarize(seed.reports, "s-003", 11, PowerType.EV)
-        assertEquals(12, summary.sampleCount)
+        assertEquals(18, summary.sampleCount)
         assertEquals(9.0, summary.minCabinTempC!!, 0.01)
         assertEquals(8.0, summary.avgHvacHours!!, 0.05)
-        assertEquals(14.0, summary.avgEnergyUsedPct!!, 0.05)
-        assertEquals(3, summary.rainyCount)
+        assertEquals(13.94, summary.avgEnergyUsedPct!!, 0.01)
+        assertEquals(4, summary.rainyCount)
         assertTrue(summary.reliable)
         assertEquals(
-            "11월 기준 새벽 실내 최저 9°C · 공조 8시간 사용 시 배터리 14% 소모 · 기록 12회 중 비 온 날 3회",
+            "11월 기준 새벽 실내 최저 9°C · 공조 8시간 사용 시 배터리 14% 소모 · 기록 18회 중 비 온 날 4회",
             summary.headline(),
         )
     }
@@ -248,15 +248,15 @@ class DomainTest {
         assertTrue("2025-11-15" in dates)
         assertTrue("2025-11-22" in dates)
         assertFalse(dates.any { it.startsWith("2026-10") })
-        assertEquals(12, near.size)
+        assertEquals(18, near.size)
         // 오늘과 날짜가 가까운 순
-        assertEquals(listOf("2026-11-11", "2025-11-15", "2026-11-10"), dates.take(3))
+        assertEquals(listOf("2026-11-13", "2026-11-14", "2026-11-12"), dates.take(3))
 
         // 연말·연초를 넘어가는 경우
         assertEquals(3, ReportAggregator.dayGap(java.time.LocalDate.of(2025, 12, 30), java.time.LocalDate.of(2026, 1, 2)))
 
         val s = ReportAggregator.summarizeNear(seed.reports, "s-003", today, PowerType.EV)
-        assertEquals(12, s.sampleCount)
+        assertEquals(18, s.sampleCount)
         assertEquals(near.mapNotNull { it.outsideMinC }.min(), s.minOutsideC!!, 0.001)
     }
 

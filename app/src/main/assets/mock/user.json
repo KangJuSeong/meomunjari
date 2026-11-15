@@ -15,8 +15,8 @@
     "targetTempC": 22.0,
     "hvacOn": true,
     "seatMemorySlot": 1,
-    "backrestPctBySeat": { "ROW_1_LEFT": 50, "ROW_1_RIGHT": 40 },
-    "windowLevelByArea": {},
+    "backrestPctBySeat": { "ROW_1_LEFT": 30, "ROW_1_RIGHT": 30 },
+    "windowLevelByArea": { "ROW_1_LEFT": 2, "ROW_1_RIGHT": 2 },
     "ambientOn": true,
     "ambientBrightness": 30
   },
