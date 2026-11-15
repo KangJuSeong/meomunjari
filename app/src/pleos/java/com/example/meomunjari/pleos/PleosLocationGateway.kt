@@ -34,8 +34,13 @@ class PleosLocationGateway(context: Context) : LocationGateway {
         }
     }
 
+    /**
+     * 위치 구독을 시작한다. 이미 구독 중이면 아무것도 하지 않고, 실패했으면 다음 호출 때 다시 시도한다.
+     * (권한 허용 직후 첫 호출이 SecurityException으로 실패해도, 화면에 돌아올 때 다시 불러 복구한다.)
+     */
     override fun start() {
         if (initialized) return
+        var sdkInitialized = false
         runCatching {
             val supported = fused.isSupported()
             PleosLog.info("FusedLocation.isSupported() = $supported")
@@ -45,14 +50,16 @@ class PleosLocationGateway(context: Context) : LocationGateway {
             }
             PleosLog.info("→ FusedLocation.initialize()")
             fused.initialize()
-            initialized = true
+            sdkInitialized = true
             PleosLog.info("→ FusedLocation.getLastKnownLocation(listener)")
             fused.getLastKnownLocation(listener)
             PleosLog.info("→ FusedLocation.registerFusedLocationCallback(listener)")
             fused.registerFusedLocationCallback(listener)
+            initialized = true
         }.onFailure {
-            PleosLog.warn("✗ FusedLocation start: ${it.javaClass.simpleName}: ${it.message}", it)
+            PleosLog.warn("✗ FusedLocation start: ${it.javaClass.simpleName}: ${it.message} → 다음에 다시 시도", it)
             Log.e(TAG, "FusedLocation start failed", it)
+            if (sdkInitialized) runCatching { fused.release() }
         }
     }
 
