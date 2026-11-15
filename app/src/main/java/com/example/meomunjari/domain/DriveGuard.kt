@@ -15,21 +15,17 @@ object DriveGuard {
         return if (moving || inGear) DriveState.DRIVING else DriveState.PARKED
     }
 
-    /** 주차(P) 상태인가. 기어를 못 읽는 차는 정지 상태로 대신 판단한다. */
-    fun isParked(s: VehicleSnapshot): Boolean = when (s.gear) {
-        Gear.PARK -> true
-        Gear.UNKNOWN -> (s.speedKmh ?: 0f) < 0.5f
-        else -> false
+    /** 연결된 차량의 주차 증거. 기어가 없으면 유효한 정지 속도가 필요하다. */
+    fun isParked(s: VehicleSnapshot): Boolean {
+        if (!s.connected) return false
+        val speed = s.speedKmh
+        if (speed != null && (!speed.isFinite() || speed < 0f || speed >= 0.5f)) return false
+        return s.gear == Gear.PARK || (s.gear == Gear.UNKNOWN && speed != null)
     }
 
-    /** 차량 제어는 주차 상태에서만. */
     fun canControl(s: VehicleSnapshot): Boolean = isParked(s)
 
-    fun canShowReviewQr(s: VehicleSnapshot): Boolean =
-        s.connected && s.gear == Gear.PARK && evaluate(s) == DriveState.PARKED
+    fun canShowReviewQr(s: VehicleSnapshot): Boolean = s.gear == Gear.PARK && isParked(s)
 
-    /** 등록하면 현재 위치 방문도 인증하므로 차량 상태로 정차를 확인해야 한다. */
-    fun canRegisterSpot(s: VehicleSnapshot): Boolean =
-        s.connected && (s.gear != Gear.UNKNOWN || s.speedKmh != null) &&
-            isParked(s) && evaluate(s) == DriveState.PARKED
+    fun canRegisterSpot(s: VehicleSnapshot): Boolean = isParked(s)
 }

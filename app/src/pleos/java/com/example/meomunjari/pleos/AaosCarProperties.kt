@@ -7,9 +7,9 @@ import com.example.meomunjari.core.vehicle.Gear
 /**
  * Vehicle SDK에 Gear 도메인·외기 온도가 없어 AAOS CarPropertyManager로 기어·속도·외기 온도를 읽는다.
  * android.car 라이브러리를 컴파일 의존성으로 두지 않기 위해 리플렉션으로 접근한다.
- * 읽지 못하면 null/UNKNOWN을 돌려주고, 앱은 '정지 상태'로 대신 판단한다(DriveGuard).
+ * 읽지 못하면 null/UNKNOWN을 돌려준다. DriveGuard가 남은 신호로 정차를 확인한다.
  */
-internal class AaosCarProperties(private val context: Context) {
+internal class AaosCarProperties(private val context: Context, private val onDisconnected: () -> Unit) {
     private var car: Any? = null
     private var manager: Any? = null
 
@@ -53,6 +53,7 @@ internal class AaosCarProperties(private val context: Context) {
     private fun onCarLifecycle(carClass: Class<*>, newCar: Any?, ready: Boolean) {
         if (!ready) {
             manager = null
+            onDisconnected()
             lastLogged.clear()
             PleosLog.warn("⇠ AAOS 차량 서비스 연결 끊김(재시작 중) → 다시 연결될 때까지 기어·속도 읽기 중단")
             return
