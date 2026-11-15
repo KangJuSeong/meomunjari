@@ -28,7 +28,7 @@ object GatewayFactory {
         spotsProvider: () -> List<Spot>,
         batteryKWh: Double,
     ): Gateways = Gateways(
-        vehicle = PleosVehicleGateway(context, scope),
+        vehicle = PleosVehicleGateway(context, scope, timeScale, batteryKWh),
         location = PleosLocationGateway(context),
         navi = PleosNaviGateway(context),
         console = null,

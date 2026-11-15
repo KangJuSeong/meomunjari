@@ -44,7 +44,18 @@ import kotlin.reflect.KClass
 class PleosVehicleGateway(
     context: Context,
     private val scope: CoroutineScope,
+    /** 시연 가속 배율(1초 = n초). 에뮬레이터 실내 온도 흉내에만 쓴다. */
+    private val timeScale: StateFlow<Int> = MutableStateFlow(1),
+    /** 배터리 용량(kWh). 에뮬레이터 배터리 소모 흉내에만 쓴다. */
+    private val batteryKWh: Double = 0.0,
 ) : VehicleGateway {
+
+    private val emulator = EmulatorMock()
+
+    init {
+        // 에뮬레이터에서만: 테스트 스크립트가 기어·속도를 바꿀 수 있게 한다(실차에서는 등록하지 않음).
+        emulator.registerDriveReceiver(context)
+    }
 
     private val vehicle = Vehicle(context.applicationContext)
     private val car = AaosCarProperties(context.applicationContext)
@@ -98,7 +109,23 @@ class PleosVehicleGateway(
         car.connect()
         pollJob = scope.launch {
             while (isActive) {
-                _snapshot.update { it.copy(gear = car.gear(), speedKmh = car.speedKmh(), outsideTempC = car.outsideTempC()) }
+                _snapshot.update {
+                    it.copy(
+                        gear = emulator.gearOverride ?: car.gear(),
+                        speedKmh = emulator.speedOverrideKmh ?: car.speedKmh(),
+                        outsideTempC = car.outsideTempC(),
+                    )
+                }
+                if (emulator.enabled) {
+                    val s = _snapshot.value
+                    val simMinutes = timeScale.value.coerceAtLeast(1) / 60.0
+                    emulator.stepCabin(simMinutes, s.hvacOn, s.hvacTargetC, s.outsideTempC)?.let { t ->
+                        _snapshot.update { it.copy(cabinTempC = t) }
+                    }
+                    emulator.stepBattery(simMinutes, s.hvacOn, batteryKWh)?.let { pct ->
+                        _snapshot.update { it.copy(batteryPct = pct) }
+                    }
+                }
                 delay(1_000)
             }
         }
@@ -122,7 +149,10 @@ class PleosVehicleGateway(
     private fun subscribe() {
         // 배터리(EV) / 연료(내연기관): 지원하는 쪽만 값이 들어온다.
         read(EvBattery::class, ev, "getEvBatteryStateOfCharge", "registerEvBatteryStateOfCharge") { v ->
-            PleosInvoker.number(v)?.let { pct -> _snapshot.update { it.copy(batteryPct = pct) } }
+            PleosInvoker.number(v)?.let { pct ->
+                // 에뮬레이터는 배터리가 100%에서 줄지 않아 첫 값만 시작점으로 쓰고, 이후는 EmulatorMock이 줄인다.
+                if (emulator.enabled) emulator.seedBattery(pct) else _snapshot.update { it.copy(batteryPct = pct) }
+            }
         }
         read(Fuel::class, fuel, "getFuelPercent", "registerFuelPercent") { v ->
             PleosInvoker.number(v)?.let { pct -> _snapshot.update { it.copy(fuelPct = pct) } }
@@ -132,7 +162,10 @@ class PleosVehicleGateway(
         })
         // 실내 온도·공조
         read(HVAC::class, hvac, "getHvacTemperatureCurrent", "registerHvacTemperatureCurrent", DRIVER_SEAT) { v ->
-            PleosInvoker.number(v)?.let { t -> _snapshot.update { it.copy(cabinTempC = t) } }
+            PleosInvoker.number(v)?.let { t ->
+                // 에뮬레이터는 실내 온도가 고정이라 첫 값만 시작점으로 쓰고, 이후는 EmulatorMock이 바꾼다.
+                if (emulator.enabled) emulator.seedCabin(t) else _snapshot.update { it.copy(cabinTempC = t) }
+            }
         }
         // 목표 온도(HVAC_TEMPERATURE_SET)는 공조가 꺼져 있으면 읽을 수 없다(PropertyNotAvailable).
         // 그래서 변경 구독만 걸어 두고, 한 번 읽기는 공조가 켜진 걸 확인했을 때 한다(readHvacTargetIfOn).
@@ -314,8 +347,12 @@ class PleosVehicleGateway(
         }
         SeatPosition.entries.forEach { pos ->
             val pct = p.backrestPctBySeat[pos.area] ?: return@forEach
-            when (val outcome = moveBackrest(pos.area, pct)) {
-                BackrestOutcome.REACHED -> done += "${pos.label} 등받이 $pct%"
+            val outcome = if (emulator.enabled) mockBackrest(pos.area, pct) else moveBackrest(pos.area, pct)
+            when (outcome) {
+                BackrestOutcome.REACHED -> {
+                    done += "${pos.label} 등받이 $pct%"
+                    _snapshot.update { it.copy(seatBackrestPct = it.seatBackrestPct + (pos.area to pct)) }
+                }
                 else -> notDone += "${pos.label} 등받이: ${outcome.reason}"
             }
         }
@@ -445,6 +482,25 @@ class PleosVehicleGateway(
         }
     }
 
+    /**
+     * 에뮬레이터용 등받이 이동. 에뮬레이터는 이동 명령을 받아도 위치가 그대로라, SDK 호출(이동·정지)은 그대로 보내고
+     * 좌석이 목표까지 움직인 것처럼 처리한다. 지원하지 않는 좌석은 실차와 같이 건너뛴다.
+     */
+    private suspend fun mockBackrest(area: String, targetPct: Int): BackrestOutcome {
+        val seatName = seatLabel(area)
+        if (bounds[CHECK_BACKREST] != null && boundsOf(CHECK_BACKREST, area) == null) {
+            Log.w(SEAT_TAG, "$seatName 등받이: 이 차는 이 좌석의 등받이 조절을 지원하지 않아 건너뜀")
+            return BackrestOutcome.UNSUPPORTED
+        }
+        val from = _snapshot.value.seatBackrestPct[area] ?: SeatPosition.DEFAULT_PCT
+        val command = if (targetPct >= from) MoveControl.FORWARD else MoveControl.BACKWARD
+        set(Seat::class, seat, "moveSeatBackrestAngle", command, area)
+        delay(MOCK_BACKREST_MOVE_MS)
+        set(Seat::class, seat, "moveSeatBackrestAngle", MoveControl.STOP, area)
+        Log.i(SEAT_TAG, "$seatName 등받이: 에뮬레이터라 위치가 바뀌지 않아 $from% → $targetPct% 이동으로 처리")
+        return BackrestOutcome.REACHED
+    }
+
     private fun seatLabel(area: String): String =
         SeatPosition.entries.firstOrNull { it.area == area }?.label ?: area
 
@@ -519,5 +575,6 @@ class PleosVehicleGateway(
         private const val BACKREST_TOLERANCE = 2
         private const val BACKREST_POLL_MS = 300L
         private const val BACKREST_TIMEOUT_MS = 30_000L
+        private const val MOCK_BACKREST_MOVE_MS = 800L
     }
 }
