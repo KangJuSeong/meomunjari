@@ -42,7 +42,11 @@ class AppContainer(context: Context) {
     private var started = false
 
     fun start() {
-        if (started) return
+        if (started) {
+            // 첫 시작 때 권한이 아직 반영되지 않아 위치 구독이 실패했을 수 있다. 위치는 구독 중이면 그냥 넘어간다.
+            gateways.location.start()
+            return
+        }
         started = true
         gateways.start()
         trip.start()

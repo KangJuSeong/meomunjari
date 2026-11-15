@@ -34,6 +34,15 @@ class MainActivity : ComponentActivity() {
         if (missing.isEmpty()) container.start() else permissionLauncher.launch(missing.toTypedArray())
     }
 
+    override fun onResume() {
+        super.onResume()
+        // 권한을 허용하고 돌아온 경우, 첫 시작 때 실패한 위치 구독을 다시 시도한다.
+        val granted = GatewayFactory.runtimePermissions.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+        if (granted) container.start()
+    }
+
     override fun onDestroy() {
         // SDK release()는 앱이 SDK를 더 이상 쓰지 않을 때만 호출한다(공식 가이드).
         if (isFinishing) container.stop()
