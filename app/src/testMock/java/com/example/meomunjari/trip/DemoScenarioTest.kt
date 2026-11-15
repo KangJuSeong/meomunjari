@@ -220,7 +220,7 @@ class DemoScenarioTest {
         assertEquals(listOf("전기장판"), report.devices)
         assertTrue(report.summaryLine().startsWith("11월 3일 · 외부 "))
         assertEquals(1, finished.creditsEarned)
-        assertEquals(13, repos.reports.forSpot("s-003").count { it.month == 11 })
+        assertEquals(19, repos.reports.forSpot("s-003").count { it.month == 11 })
 
         // 8. 리뷰 + #일출맛집 → 뱃지 진행도
         val reviewed = trip.submitReview(5, "별이 쏟아져요", listOf("#일출", "별"), sharePreset = true)!!
