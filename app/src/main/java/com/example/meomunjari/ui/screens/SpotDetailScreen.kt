@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -26,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -216,12 +219,7 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit, onTag: (String) -> Unit
                         }
                         ui.nearReports.take(MAX_REPORT_ROWS).forEach { report ->
                             ThinDivider()
-                            Text(
-                                report.createdAt,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MColors.Grey500,
-                            )
-                            Text(report.valuesLine(), style = MaterialTheme.typography.bodyLarge)
+                            ReportRow(report, today)
                         }
                         if (ui.nearReports.size > MAX_REPORT_ROWS) {
                             Text("외 ${ui.nearReports.size - MAX_REPORT_ROWS}건", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
@@ -359,6 +357,41 @@ fun ReviewCard(review: Review) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(review.createdAt, style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
             if (review.tags.isNotEmpty()) Text(review.tags.joinToString(" "), style = MaterialTheme.typography.bodySmall, color = MColors.Blue)
+        }
+    }
+}
+
+/**
+ * 실측 리포트 한 줄: 왼쪽에 방문 날짜(올해가 아니면 연도), 오른쪽에 측정값과 차급·외부 기기·비 온 밤.
+ * 누가 기록했는지는 보여주지 않는다(작성자 정보는 리포트에 남기지 않음).
+ */
+@Composable
+private fun ReportRow(r: MeasurementReport, today: LocalDate) {
+    val date = r.visitDate
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Column(Modifier.width(72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(date?.let { "${it.monthValue}.${it.dayOfMonth}" } ?: "-", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = MColors.Text)
+            Text(
+                if (date != null && date.year != today.year) "${date.year}년" else "올해",
+                fontSize = 13.sp,
+                color = MColors.Grey500,
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(r.valuesLine(), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MColors.Text)
+            Text(
+                listOfNotNull(
+                    r.vehicleClass.label,
+                    r.devices.takeIf { it.isNotEmpty() }?.joinToString(", "),
+                    if (r.rained) "비 온 밤" else null,
+                ).joinToString(" · "),
+                fontSize = 15.sp,
+                color = MColors.Grey500,
+            )
         }
     }
 }
