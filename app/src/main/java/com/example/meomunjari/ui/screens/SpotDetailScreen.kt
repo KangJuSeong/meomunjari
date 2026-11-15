@@ -76,9 +76,12 @@ import kotlinx.coroutines.flow.flow
 import java.time.LocalDateTime
 import java.time.LocalDate
 
+private const val MAX_REPORT_ROWS = 6
+
 data class SpotDetailUi(
     val spot: Spot? = null,
     val reviews: List<Review> = emptyList(),
+    val nearReports: List<MeasurementReport> = emptyList(),
     val summary: ReportSummary? = null,
     val forecast: EnergyForecast? = null,
     val routeEstimate: RouteEstimate? = null,
@@ -127,6 +130,7 @@ class SpotDetailViewModel(c: AppContainer, private val spotId: String) : ViewMod
         SpotDetailUi(
             spot = spot,
             reviews = b.reviews.filter { it.spotId == spot.id }.sortedByDescending { it.createdAt },
+            nearReports = ReportAggregator.near(b.reports, spot.id, today),
             summary = summary,
             forecast = forecast,
             routeEstimate = routeEstimate,
@@ -197,9 +201,7 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit, onTag: (String) -> Unit
                     ) {
                         if (s == null || s.isEmpty) {
                             Text("앞뒤 2주 안에 남겨진 리포트가 아직 없어요. 첫 기록을 남기면 기록왕 2배!", style = MaterialTheme.typography.bodyLarge, color = MColors.Grey500)
-                        } else if (!s.canShowSharedMeasurements) {
-                            Text("기록이 2건 모이면 이 시기의 통계를 보여줘요.", style = MaterialTheme.typography.bodyLarge)
-                        } else {
+                        } else if (s.canShowSharedMeasurements) {
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 StatTile("외부 최저", s.sharedMinOutsideC?.let { "${it.roundToInt()}°C" } ?: "-", Modifier.weight(1f))
                                 StatTile(
@@ -212,7 +214,18 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit, onTag: (String) -> Unit
                             }
                             s.minCabinTempC?.let { Text("실내 최저 ${it.roundToInt()}°C · 비 온 밤 ${s.rainyCount}회") }
                         }
-                        Text("기록 공유에 동의한 차량의 측정값을 모아 보여줘요.", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
+                        ui.nearReports.take(MAX_REPORT_ROWS).forEach { report ->
+                            ThinDivider()
+                            Text(
+                                report.createdAt,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MColors.Grey500,
+                            )
+                            Text(report.valuesLine(), style = MaterialTheme.typography.bodyLarge)
+                        }
+                        if (ui.nearReports.size > MAX_REPORT_ROWS) {
+                            Text("외 ${ui.nearReports.size - MAX_REPORT_ROWS}건", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
+                        }
                     }
                 }
                 item {

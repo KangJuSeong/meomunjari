@@ -256,7 +256,7 @@ fun MyScreen() {
                         Column(Modifier.weight(1f)) {
                             Text("차박 중 차량 기록 공유", style = MaterialTheme.typography.bodyLarge)
                             Text("차박 중에 끄면 이번 기록을 지워요. 다시 켜면 다음 차박부터 기록해요.", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
-                            Text("실내 온도·소모량·와이퍼를 익명 집계로만 공개", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
+                            Text("스팟에 방문 날짜·온도·소모량·차박 시간을 닉네임 없이 표시", style = MaterialTheme.typography.bodySmall, color = MColors.Grey500)
                         }
                         Toggle(checked = user.consentToRecord, onCheckedChange = { on -> c.trip.setConsent(on) })
                     }
