@@ -200,8 +200,8 @@ fun ArrivalScreen(onStarted: () -> Unit, onRegister: () -> Unit, onSunrise: () -
             title = { Text("밤사이 차량 기록을 공유할까요?") },
             text = {
                 Text(
-                    "실내 온도, 배터리·연료 소모량, 와이퍼 작동 여부를 기록해 이 스팟의 실측 리포트에 보태요. " +
-                        "리포트에는 누가 기록했는지 알 수 없는 집계값만 보여요.",
+                    "외기·실내 온도, 배터리·연료 소모량, 차박 시간과 와이퍼 작동 여부를 기록해요. " +
+                        "스팟에는 닉네임 없이 방문 날짜와 그날의 온도·소모량·차박 시간이 표시돼요.",
                     style = MaterialTheme.typography.bodyLarge,
                 )
             },

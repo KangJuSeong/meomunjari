@@ -101,7 +101,7 @@ fun ReviewScreen(onDone: () -> Unit) {
                         KeyValue("차박 시간", "${r.durationHours}시간")
                         KeyValue("외부 기기", r.devices.ifEmpty { listOf("없음") }.joinToString(", "))
                         Text(
-                            "스팟에는 내 닉네임 없이 같은 시기의 차량 기록을 모아 보여줘요." +
+                            "스팟에는 내 닉네임 없이 그날의 온도·소모량·차박 시간이 표시돼요." +
                                 if (f.creditsEarned == 2) " 이 계절 첫 기록이라 기록왕 2배!" else "",
                             style = MaterialTheme.typography.bodySmall,
                             color = MColors.Teal,
