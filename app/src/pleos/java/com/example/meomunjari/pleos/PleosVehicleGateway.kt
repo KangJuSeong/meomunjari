@@ -7,6 +7,7 @@ import ai.pleos.playground.vehicle.api.Fuel
 import ai.pleos.playground.vehicle.api.HVAC
 import ai.pleos.playground.vehicle.api.Light
 import ai.pleos.playground.vehicle.api.Seat
+import ai.pleos.playground.vehicle.api.model.area.SeatArea
 import ai.pleos.playground.vehicle.constant.control.MoveControl
 import ai.pleos.playground.vehicle.api.Window
 import ai.pleos.playground.vehicle.api.Wiper
@@ -25,7 +26,6 @@ import com.example.meomunjari.domain.WindowPosition
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -329,14 +329,6 @@ class PleosVehicleGateway(
         return ApplyItemResult(ControlItem.SEAT, status, detail)
     }
 
-    private enum class BackrestOutcome(val reason: String) {
-        REACHED("도달"),
-        STALLED("차가 움직이지 않음"),
-        TIMEOUT("시간 안에 목표에 닿지 못함"),
-        UNSUPPORTED("이 좌석은 조절 미지원"),
-        FAILED("위치를 읽거나 움직이지 못함"),
-    }
-
     override suspend fun setHvacPower(on: Boolean): Boolean = setHvacPowerOnCar(on)
 
     /**
@@ -362,87 +354,19 @@ class PleosVehicleGateway(
         val seatName = seatLabel(area)
         val range = boundsOf(CHECK_BACKREST, area)
         if (bounds[CHECK_BACKREST] != null && range == null) {
-            Log.w(SEAT_TAG, "$seatName 등받이: 이 차는 이 좌석의 등받이 조절을 지원하지 않아 건너뜀")
+            Log.w(TAG, "$seatName 등받이: 이 차는 이 좌석의 등받이 조절을 지원하지 않아 건너뜀")
             return BackrestOutcome.UNSUPPORTED
         }
-        val r = range ?: 0..100
-        val target = VehicleRange.fromPercent(targetPct, r)
-        val startedAt = System.currentTimeMillis()
-        val startPos = readBackrest(area)
-        if (startPos == null) {
-            Log.w(SEAT_TAG, "$seatName 등받이: 현재 위치를 읽지 못해 움직이지 않음 (목표 $targetPct% = $target)")
-            return BackrestOutcome.FAILED
-        }
-        var current: Int = startPos
-        Log.i(SEAT_TAG, "$seatName 등받이: 현재 $current → 목표 $target ($targetPct%, 차 범위 ${r.first}~${r.last}, 허용 ±$BACKREST_TOLERANCE)")
-        if (abs(target - current) <= BACKREST_TOLERANCE) {
-            Log.i(SEAT_TAG, "$seatName 등받이: 이미 목표 범위 안이라 움직이지 않음")
-            return BackrestOutcome.REACHED
-        }
-        var sign = 1
-        var firstMove = true
-        var step = 0
-        var stalled = false
-        var triedReverse = false
-        var lastChangeAt = System.currentTimeMillis()
-        val reached = withTimeoutOrNull(BACKREST_TIMEOUT_MS) {
-            while (abs(target - current) > BACKREST_TOLERANCE) {
-                val before = abs(target - current)
-                val forward = (target > current) == (sign > 0)
-                val command = if (forward) MoveControl.FORWARD else MoveControl.BACKWARD
-                if (!set(Seat::class, seat, "moveSeatBackrestAngle", command, area)) {
-                    Log.w(SEAT_TAG, "$seatName 등받이: moveSeatBackrestAngle($command) 실패")
-                    return@withTimeoutOrNull false
-                }
-                delay(BACKREST_POLL_MS)
-                val read = readBackrest(area)
-                if (read == null) {
-                    Log.w(SEAT_TAG, "$seatName 등받이: 이동 중 현재 위치를 읽지 못함")
-                    return@withTimeoutOrNull false
-                }
-                step++
-                Log.d(SEAT_TAG, "$seatName 등받이: #$step $command $current → $read (남은 ${target - read})")
-                if (read != current) lastChangeAt = System.currentTimeMillis()
-                current = read
-                if (System.currentTimeMillis() - lastChangeAt >= BACKREST_STALL_MS) {
-                    if (!triedReverse) {
-                        triedReverse = true
-                        sign = -sign
-                        lastChangeAt = System.currentTimeMillis()
-                        Log.i(SEAT_TAG, "$seatName 등받이: ${BACKREST_STALL_MS / 1000}초 동안 위치가 그대로라 반대 방향으로 시도")
-                        continue
-                    }
-                    stalled = true
-                    Log.w(SEAT_TAG, "$seatName 등받이: 양쪽 방향 모두 위치가 바뀌지 않음 → 차가 움직이지 않는 것으로 보고 멈춤")
-                    return@withTimeoutOrNull false
-                }
-                if (firstMove) {
-                    firstMove = false
-                    if (abs(target - current) > before) {
-                        sign = -sign
-                        Log.i(SEAT_TAG, "$seatName 등받이: $command 로 목표에서 멀어져 방향을 반대로 바꿈")
-                    }
-                }
-            }
-            true
-        } ?: false
-        // 닿았든 시간이 다 됐든 모터는 반드시 멈춘다.
-        set(Seat::class, seat, "moveSeatBackrestAngle", MoveControl.STOP, area)
-        val endPos = readBackrest(area) ?: current
-        val seconds = (System.currentTimeMillis() - startedAt) / 1000.0
-        val outcome = when {
-            reached -> "도달"
-            stalled -> "움직임 없음"
-            seconds * 1000 >= BACKREST_TIMEOUT_MS -> "시간 초과"
-            else -> "중단"
-        }
-        Log.i(SEAT_TAG, "$seatName 등받이: $outcome · $startPos → $endPos (목표 $target = $targetPct%, ${step}회 이동, ${seconds}초)")
-        return when {
-            reached -> BackrestOutcome.REACHED
-            stalled -> BackrestOutcome.STALLED
-            seconds * 1000 >= BACKREST_TIMEOUT_MS -> BackrestOutcome.TIMEOUT
-            else -> BackrestOutcome.FAILED
-        }
+        val target = VehicleRange.fromPercent(targetPct, range ?: 0..100)
+        return BackrestMotion(
+            readPosition = { readBackrest(area) },
+            sendCommand = { command ->
+                val ack = setForValues(Seat::class, seat, "moveSeatBackrestAngle", command, area)
+                val seatArea = ack?.firstOrNull() as? SeatArea
+                seatArea?.values?.any { it.name == area } == true && ack?.lastOrNull() == command
+            },
+            onStopUnconfirmed = { PleosLog.warn("$seatName 등받이 정지 응답을 확인하지 못했어요") },
+        ).moveTo(target)
     }
 
     private fun seatLabel(area: String): String =
@@ -504,20 +428,13 @@ class PleosVehicleGateway(
 
     companion object {
         private const val TAG = "PleosVehicle"
-        /** 좌석 등받이 이동 로그. `adb logcat -s MeomunjariSeat` 로 볼 수 있다. */
-        private const val SEAT_TAG = "MeomunjariSeat"
         private const val DRIVER_SEAT = "ROW_1_LEFT"
         private const val DOOR_OPEN_VALUE = 100
         private const val CHECK_SEAT_MEMORY = "checkSeatMemoryCapabilities"
         private const val CHECK_HVAC_POWER = "checkHvacPowerCapabilities"
         private const val CHECK_LIGHT_SWITCH = "checkAmbientLightSwitchCapabilities"
         private const val CHECK_LIGHT_BRIGHTNESS = "checkAmbientLightBrightnessCapabilities"
-        /** 이동 명령을 보내도 위치가 이만큼 그대로면 '안 움직임'으로 본다. */
-        private const val BACKREST_STALL_MS = 2_000L
         private const val CHECK_WINDOW = "checkWindowPositionCapabilities"
         private const val CHECK_BACKREST = "checkSeatBackrestAnglePositionCapabilities"
-        private const val BACKREST_TOLERANCE = 2
-        private const val BACKREST_POLL_MS = 300L
-        private const val BACKREST_TIMEOUT_MS = 30_000L
     }
 }
