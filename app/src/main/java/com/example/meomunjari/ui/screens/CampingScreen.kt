@@ -109,9 +109,6 @@ fun CampingScreen(onFinished: () -> Unit) {
                         } else {
                             Text("첫 기록을 기다리는 중이에요", style = MaterialTheme.typography.bodyMedium)
                         }
-                        if (state.samples.any { it.wiperActive }) {
-                            Text("🌧️ 와이퍼가 움직였어요. 비 온 밤으로 기록할게요", style = MaterialTheme.typography.bodyMedium, color = MColors.Purple)
-                        }
                     }
                 }
 

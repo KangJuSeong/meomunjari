@@ -100,7 +100,7 @@ fun VirtualConsolePanel(console: VirtualConsole, onClose: () -> Unit, modifier: 
             ConsoleSlider("실내 온도", "${((vehicle.cabinTempC ?: 0f) * 10).roundToInt() / 10.0}°C", vehicle.cabinTempC ?: 0f, -5f..35f, console::setCabinTemp)
             ConsoleSlider("외기 온도", "${outside.roundToInt()}°C", outside, -15f..35f, console::setOutsideTemp)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("와이퍼 (비)", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Text("와이퍼",style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                 Toggle(checked = vehicle.wiperActive, onCheckedChange = console::setWiper)
             }
 

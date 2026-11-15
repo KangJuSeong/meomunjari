@@ -52,7 +52,7 @@ class DomainTest {
         assertEquals(4, summary.rainyCount)
         assertTrue(summary.reliable)
         assertEquals(
-            "11월 기준 새벽 실내 최저 9°C · 공조 8시간 사용 시 배터리 14% 소모 · 기록 18회 중 비 온 날 4회",
+            "11월 기준 새벽 실내 최저 9°C · 공조 8시간 사용 시 배터리 14% 소모 · 기록 18회",
             summary.headline(),
         )
     }

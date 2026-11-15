@@ -215,7 +215,7 @@ fun SpotDetailScreen(spotId: String, onBack: () -> Unit, onTag: (String) -> Unit
                                 )
                                 StatTile("평균 차박", s.avgDurationHours?.let { "${it.roundToInt()}시간" } ?: "-", Modifier.weight(1f))
                             }
-                            s.minCabinTempC?.let { Text("실내 최저 ${it.roundToInt()}°C · 비 온 밤 ${s.rainyCount}회") }
+                            s.minCabinTempC?.let { Text("실내 최저 ${it.roundToInt()}°C") }
                         }
                         ui.nearReports.take(MAX_REPORT_ROWS).forEach { report ->
                             ThinDivider()
@@ -362,7 +362,7 @@ fun ReviewCard(review: Review) {
 }
 
 /**
- * 실측 리포트 한 줄: 왼쪽에 방문 날짜(올해가 아니면 연도), 오른쪽에 측정값과 차급·외부 기기·비 온 밤.
+ * 실측 리포트 한 줄: 왼쪽에 방문 날짜(올해가 아니면 연도), 오른쪽에 측정값과 차급·외부 기기.
  * 누가 기록했는지는 보여주지 않는다(작성자 정보는 리포트에 남기지 않음).
  */
 @Composable
@@ -387,7 +387,6 @@ private fun ReportRow(r: MeasurementReport, today: LocalDate) {
                 listOfNotNull(
                     r.vehicleClass.label,
                     r.devices.takeIf { it.isNotEmpty() }?.joinToString(", "),
-                    if (r.rained) "비 온 밤" else null,
                 ).joinToString(" · "),
                 fontSize = 15.sp,
                 color = MColors.Grey500,

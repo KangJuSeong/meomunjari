@@ -33,7 +33,10 @@ data class ReportSummary(
     val canShowSharedEnergy: Boolean get() = energySampleCount >= 2
     val sharedMinOutsideC: Double? get() = minOutsideC?.takeIf { outsideSampleCount >= 2 }
 
-    /** "11월 기준 새벽 실내 최저 9°C · 공조 8시간 사용 시 배터리 14% 소모 · 기록 12회 중 비 온 날 3회" */
+    /**
+     * "11월 기준 새벽 실내 최저 9°C · 공조 8시간 사용 시 배터리 14% 소모 · 기록 12회"
+     * 비 온 밤은 와이퍼 작동만으로는 판단할 근거가 부족해 문구에 넣지 않는다.
+     */
     fun headline(): String {
         if (isEmpty) return "${month}월 실측 기록이 아직 없어요"
         val parts = mutableListOf<String>()
@@ -41,7 +44,7 @@ data class ReportSummary(
         if (avgHvacHours != null && avgEnergyUsedPct != null && powerType != null) {
             parts += "공조 ${avgHvacHours.roundToInt()}시간 사용 시 ${powerType.energyLabel} ${avgEnergyUsedPct.roundToInt()}% 소모"
         }
-        parts += "기록 ${sampleCount}회 중 비 온 날 ${rainyCount}회"
+        parts += "기록 ${sampleCount}회"
         return parts.joinToString(" · ")
     }
 }
